@@ -1,0 +1,76 @@
+##markdate##
+6/2/2020
+##markdate##
+
+#subtitle#
+Neutron Integration
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT external_dns_driver designate
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT dns_domain xurupita.nl
+#code#
+
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf designate url http://simplecontroller:9001/v2
+openstack-config --set /etc/neutron/neutron.conf designate auth_type password
+openstack-config --set /etc/neutron/neutron.conf designate auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf designate username designate
+openstack-config --set /etc/neutron/neutron.conf designate password DESIGNATE_PASS
+openstack-config --set /etc/neutron/neutron.conf designate project_name service
+openstack-config --set /etc/neutron/neutron.conf designate project_domain_name Default
+openstack-config --set /etc/neutron/neutron.conf designate user_domain_name Default
+openstack-config --set /etc/neutron/neutron.conf designate allow_reverse_dns_lookup True
+openstack-config --set /etc/neutron/neutron.conf designate ipv4_ptr_zone_prefix_size 24
+openstack-config --set /etc/neutron/neutron.conf designate ptr_zone_email admin@xuruita.nl
+openstack-config --set /etc/neutron/neutron.conf designate insecure true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security,dns_domain_ports
+#code#
+
+#code#
+systemctl restart neutron-*
+#code#
+
+#code#
+openstack network set --dns-domain mydnsdomain.com. mynet
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -46,8 +46,9 @@ systemctl disable NetworkManager
 cat << 'EOF' > /etc/hosts
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.88.6    simpleservices.xurupita.nl  simpleservices
 192.168.88.7    simplecontroller.xurupita.nl  simplecontroller
-192.168.88.10    simplecompute.xurupita.nl     simplecompute
+192.168.88.11    simplecompute.xurupita.nl     simplecompute
 EOF
 #code#
 
@@ -723,7 +724,7 @@ openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
 #code#
 
 #code#
-openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.10
+openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.11
 #code#
 
 #code#
@@ -839,7 +840,7 @@ openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 #code#
 
 #code#
-openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
+openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router,network_segment_range
 #code#
 
 #code#
@@ -918,7 +919,7 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_
 #code#
 
 #code#
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 8000:80000
 #code#
 
 #code#
@@ -1162,7 +1163,7 @@ openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs enable
 #code#
 
 #code#
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.10
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.11
 #code#
 
 #code#
@@ -1207,7 +1208,7 @@ EOF
 cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-br-ex
 NAME=br-ex
 DEVICE=br-ex
-IPADDR=192.168.88.10
+IPADDR=192.168.88.11
 PREFIX=24
 DEVICETYPE=ovs
 TYPE=OVSBridge

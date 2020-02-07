@@ -1,0 +1,259 @@
+##markdate##
+6/2/2020
+##markdate##
+
+#subtitle#
+BIND 9
+#subtitle#
+
+
+#whichserver#
+simpleservices
+#whichserver#
+
+#code#
+yum install bind -y
+#code#
+
+#code#
+cat << 'EOF' > /etc/named.conf
+options {
+	listen-on port 53 { 192.168.88.6; };
+	listen-on-v6 port 53 { ::1; };
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+	statistics-file "/var/named/data/named_stats.txt";
+	memstatistics-file "/var/named/data/named_mem_stats.txt";
+	recursing-file  "/var/named/data/named.recursing";
+	secroots-file   "/var/named/data/named.secroots";
+	allow-query     { any; };
+	allow-new-zones yes;
+	request-ixfr no;
+	recursion no;
+	dnssec-enable yes;
+	dnssec-validation yes;
+	bindkeys-file "/etc/named.root.key";
+	managed-keys-directory "/var/named/dynamic";
+	pid-file "/run/named/named.pid";
+	session-keyfile "/run/named/session.key";
+};
+include "/etc/named.designate.key";
+controls {
+  inet 192.168.88.6 port 953
+    allow { 192.168.88.7; } keys { "designate"; };
+};
+logging {
+        channel default_debug {
+                file "data/named.run";
+                severity dynamic;
+        };
+};
+zone "." IN {
+	type hint;
+	file "named.ca";
+};
+include "/etc/named.rfc1912.zones";
+include "/etc/named.root.key";
+EOF
+#code#
+
+#code#
+rndc-confgen -a -k designate -c /etc/named.designate.key -r /dev/urandom
+#code#
+
+#code#
+chmod 644 /etc/named.designate.key
+#code#
+
+#code#
+systemctl enable named
+systemctl start named
+#code#
+
+#subtitle#
+DNS as a service (Designate)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+mysql -u root -e "CREATE DATABASE designate"
+mysql -u root -e "GRANT ALL PRIVILEGES ON designate.* TO 'designate'@'%' IDENTIFIED BY 'DESIGNATE_DBPASS' ; flush privileges"
+#code#
+
+#code#
+source admin_openrc
+#code#
+
+#code#
+openstack user create --domain default --password DESIGNATE_PASS designate
+#code#
+
+#code#
+openstack role add --project service --user designate admin
+#code#
+
+#code#
+openstack service create --name designate --description "OpenStack DNSaasService" dns
+#code#
+
+#code#
+openstack endpoint create --region EURegion dns public http://simplecontroller:9001
+#code#
+
+#code#
+openstack endpoint create --region EURegion dns internal http://simplecontroller:9001
+#code#
+
+#code#
+openstack endpoint create --region EURegion dns admin http://simplecontroller:9001
+#code#
+
+#code#
+yum install openstack-designate-agent openstack-designate-mdns openstack-designate-api openstack-designate-producer openstack-designate-worker openstack-designate-central  -y
+#code#
+
+
+#code#
+openstack-config --set /etc/designate/designate.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf storage:sqlalchemy connection mysql+pymysql://designate:DESIGNATE_DBPASS@simplecontroller/designate
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/designate/designate.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/designate/designate.conf keystone_authtoken auth_type password
+openstack-config --set /etc/designate/designate.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/designate/designate.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/designate/designate.conf keystone_authtoken project_name service
+openstack-config --set /etc/designate/designate.conf keystone_authtoken username designate
+openstack-config --set /etc/designate/designate.conf keystone_authtoken password DESIGNATE_PASS
+#code#
+            
+
+#code#
+openstack-config --set /etc/designate/designate.conf service:api api_base_uri http://simplecontroller:9001/
+openstack-config --set /etc/designate/designate.conf service:api listen  192.168.88.7:9001
+openstack-config --set /etc/designate/designate.conf service:api auth_strategy keystone
+openstack-config --set /etc/designate/designate.conf service:api enable_api_v2 true
+openstack-config --set /etc/designate/designate.conf service:api enabled_extensions_v2 "quotas, reports"
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf service:central default_pool_id effa575d-8ecb-41c4-b47c-94240448e773
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf service:pool_manager pool_id effa575d-8ecb-41c4-b47c-94240448e773
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf service:worker enabled true
+openstack-config --set /etc/designate/designate.conf service:worker notify true
+#code#
+
+#code#
+openstack-config --set /etc/designate/designate.conf service:mdns listen 192.168.88.7:5354
+#code#
+
+#code#
+su -s /bin/sh -c "designate-manage database sync" designate
+#code#
+
+#code#
+mysql -uroot designate -e "show tables"
+#code#
+
+#code#
+systemctl start designate-central designate-api
+systemctl enable designate-central designate-api
+#code#
+
+#code#
+openstack dns service list
+#code#
+
+
+#code#
+cat << 'EOF' > /etc/designate/pools.yaml
+- name: default
+  description: Default Pool
+  id: effa575d-8ecb-41c4-b47c-94240448e773
+  attributes: {}
+  ns_records:
+    - hostname: ns1.xurupita.nl.
+      priority: 1
+  nameservers:
+    - host: 192.168.88.6
+      port: 53
+  targets:
+    - type: bind9
+      description: BIND9 Server 1
+      masters:
+        - host: 192.168.88.7
+          port: 5354
+      options:
+        host: 192.168.88.6
+        port: 53
+        rndc_host: 192.168.88.6
+        rndc_port: 953
+        rndc_key_file: /etc/designate/named.designate.key
+EOF
+#code#
+
+#code#
+ssh 192.168.88.6 cat /etc/named.designate.key | tee /etc/designate/named.designate.key
+#code#
+
+#code#
+yum install bind  -y
+#code#
+
+#code#
+rndc -s 192.168.88.6 -p 953 -k /etc/designate/named.designate.key status
+#code#
+
+#code#
+su -s /bin/sh -c "designate-manage pool update" designate
+#code#
+
+#code#
+systemctl enable designate-worker designate-producer designate-mdns
+systemctl start designate-worker designate-producer designate-mdns
+#code#
+
+#code#
+openstack dns service list
+#code#
+
+#code#
+source myuser_openrc
+#code#
+
+#code#
+openstack zone create --email dnsmaster@mydnsdomain.com mydnsdomain.com.
+#code#
+
+#code#
+dig @192.168.88.6 mydnsdomain.com
+#code#
+
+#code#
+openstack recordset create --record '10.0.0.1' --type A mydnsdomain.com. www
+#code#
+
+#code#
+dig @192.168.88.6 www.mydnsdomain.com
+#code#
+
+
+
+
+
+
+

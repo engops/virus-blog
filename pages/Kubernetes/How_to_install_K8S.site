@@ -1,0 +1,203 @@
+##markdate##
+5/2/2020
+##markdate##
+
+
+
+#whichserver#
+All Machines!!!
+#whichserver#
+
+#code#
+hostnamectl set-hostname k8smaster.xurupita.nl
+#code#
+
+#code#
+hostnamectl set-hostname k8snode.xurupita.nl
+#code#
+
+Disable the SELinux:
+#code#
+sed -e 's/SELINUX=.*/SELINUX=permissive/' /etc/selinux/config -i
+setenforce 0
+#code#
+
+And the FirewallD:
+#code#
+systemctl stop firewalld
+systemctl disable firewalld
+#code#
+
+#code#
+cat << 'EOF' > /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.88.80    k8smaster.xurupita.nl  k8smaster
+192.168.88.81    k8snode.xurupita.nl     k8snode
+192.168.88.41    simplecontroller.xurupita.nl  simplecontroller
+192.168.88.42    simplecompute.xurupita.nl     simplecompute
+192.168.88.43    simplezuncontroller.xurupita.nl     simplezuncontroller
+192.168.88.44    simplezuncompute.xurupita.nl     simplezuncompute
+EOF
+#code#
+
+#code#
+swapoff -a
+#code#
+
+#code#
+yum install epel-release -y
+#code#
+
+#code#
+yum install docker -y
+#code#
+
+#code#
+systemctl enable docker
+systemctl start docker
+#code#
+
+#code#
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+#code#
+
+#code#
+sysctl --system
+#code#
+
+#code#
+cat << 'EOF' > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+#code#
+
+#code#
+yum install kubeadm kubelet kubectl -y
+#code#
+
+#code#
+systemctl enable kubelet
+#code#
+
+#code#
+kubectl completion bash > /etc/bash_completion.d/kubectl.bash
+kubeadm completion bash > /etc/bash_completion.d/kubeadm.bash
+
+
+source /etc/bash_completion.d/kubectl.bash
+source /etc/bash_completion.d/kubeadm.bash
+#code#
+
+
+
+
+
+#whichserver#
+k8smaster
+#whichserver#
+
+#code#
+kubeadm config images pull
+#code#
+
+#code#
+kubeadm init --apiserver-advertise-address=192.168.88.80 --pod-network-cidr=10.248.248.0/24
+#code#
+
+
+#code#
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+#code#
+
+#code#
+kubectl apply -f https://docs.projectcalico.org/v3.10/manifests/calico.yaml
+#code#
+
+#code#
+kubectl get nodes
+#code#
+
+#code#
+kubectl get pods --all-namespaces
+#code#
+
+#code#
+token=$(kubeadm token list | awk ' ! /TOKEN/ {print $1}')
+shacert="sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')"
+#code#
+
+#code#
+ssh k8snode kubeadm join 192.168.88.20:6443 --token $token --discovery-token-ca-cert-hash $shacert
+#code#
+
+#code#
+kubectl get nodes
+#code#
+
+#code#
+kubectl run test-nginx --image=nginx --replicas=2 --port=80
+#code#
+
+#code#
+kubectl expose deployment test-nginx
+#code#
+
+#code#
+kubectl get services
+#code#
+
+#code#
+kubectl describe service test-nginx
+#code#
+
+#code#
+kubectl get pods
+#code#
+
+
+#code#
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+#code#
+
+#code#
+kubectl proxy --address=0.0.0.0 --accept-hosts='.*' &
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
