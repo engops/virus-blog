@@ -1,0 +1,215 @@
+##markdate##
+5/2/2020
+##markdate##
+##markdate 12/6/2019 ##
+This how-to show how simple is the Openstack deploy using Kolla-ansible.
+
+This environment is super simples, contain only 3 machines, and two networks.
+
+192.168.88.0/24
+
+192.168.100.0/24
+
+< INSERT A IMAGE OF THIS ENVIRONMENT >
+
+#subtitle#
+All three machines should execute the commands bellow!
+#subtitle#
+
+First of all disable SELinux
+#code#
+sed -e 's/SELINUX=.*/SELINUX=permissive/' /etc/selinux/config -i
+setenforce 0
+#code#
+
+Stop and disable the FirewallD
+#code#
+systemctl stop firewalld
+systemctl disable firewalld
+#code#
+
+#code#
+cat << 'EOF' > /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.88.20    kollanode.xurupita.nl         kollanode
+192.168.88.21    controllernode01.xurupita.nl  controllernode01
+192.168.88.24    computenode01.xurupita.nl     computenode01
+EOF
+#code#
+
+Only on kollanode
+
+Install the Epel repository and some packags 
+#code#
+yum install epel-release -y
+yum install python-pip python-devel libffi-devel gcc openssl-devel libselinux-python ansible wget tree chrony docker qemu-img -y
+#code#
+
+Enable 
+#code#
+systemctl enable docker
+systemctl start docker
+#code#
+
+#code#
+pip install -U ansible
+pip install "kolla-ansible==6.0.0"
+#code#
+
+#code#
+mkdir /root/kolla-deploy
+cp -r /usr/share/kolla-ansible/etc_examples/kolla /etc/kolla/
+cp /usr/share/kolla-ansible/ansible/inventory/* /root/kolla-deploy
+#code#
+
+
+Generate random passwords
+#code#
+kolla-genpwd -p /etc/kolla/passwords.yml
+#code#
+
+#code#
+sed -e '/\[control\]/,/\[network\]/{//b' -e 'd;}' -i /root/kolla-deploy/multinode
+sed -e '/\[network\]/,/\[inner-compute\]/{//b' -e 'd;}' -i /root/kolla-deploy/multinode
+sed -e '/\[external-compute\]/,/\[compute:children\]/{//b' -e 'd;}' -i /root/kolla-deploy/multinode
+sed -e '/\[monitoring\]/,/\[storage\]/{//b' -e 'd;}' -i /root/kolla-deploy/multinode
+sed -e '/\[storage\]/,/\[deployment\]/{//b' -e 'd;}' -i /root/kolla-deploy/multinode
+#code#
+
+#code#
+sed '/\[control\]/a controllernode01' -i /root/kolla-deploy/multinode
+sed '/\[network\]/a controllernode01' -i /root/kolla-deploy/multinode
+sed '/\[monitoring\]/a controllernode01' -i /root/kolla-deploy/multinode
+sed '/\[storage\]/a controllernode01' -i /root/kolla-deploy/multinode
+sed '/\[external-compute\]/a computenode01' -i /root/kolla-deploy/multinode
+#code#
+
+Verify if all nodes are reachable
+#code#
+ansible -i /root/kolla-deploy/multinode -m ping all
+#code#
+
+#code#
+sed -e 's/[^ ]*kolla_base_distro:.*/kolla_base_distro: "centos"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*kolla_install_type:.*/kolla_install_type: "source"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*openstack_release:.*/openstack_release: "rocky"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*kolla_internal_vip_address:.*/kolla_internal_vip_address: "192.168.88.254"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*network_interface:.*/network_interface: "eth0"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*neutron_external_interface:.*/neutron_external_interface: "eth1"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*neutron_plugin_agent:.*/neutron_plugin_agent: "openvswitch"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*nova_console:.*/nova_console: "novnc"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_cinder_backup:.*/enable_cinder_backup: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_haproxy:.*/enable_haproxy: "yes"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_heat:.*/enable_heat: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_horizon:.*/enable_horizon: "yes"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_aodh:.*/enable_aodh: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_barbican:.*/enable_barbican: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_fluentd:.*/enable_fluentd: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_ceilometer:.*/enable_ceilometer: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_ceph:.*/enable_ceph: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_chrony:.*/enable_chrony: "yes"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*enable_cinder:.*/enable_cinder: "no"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*keystone_token_provider:.*/keystone_token_provider: "fernet"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*keystone_admin_user:.*/keystone_admin_user: "admin"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*keystone_admin_project:.*/keystone_admin_project: "admin"/' /etc/kolla/globals.yml -i
+sed -e 's/[^ ]*glance_backend_file:.*/glance_backend_file: "yes"/' /etc/kolla/globals.yml -i
+grep -q '^horizon_keystone_multidomain' /etc/kolla/globals.yml && sed -i 's/^horizon_keystone_multidomain.*/horizon_keystone_multidomain: "True"/' /etc/kolla/globals.yml || echo 'horizon_keystone_multidomain: "True"' >> /etc/kolla/globals.yml
+grep -q '^enable_neutron_provider_networks' /etc/kolla/globals.yml && sed -i 's/^enable_neutron_provider_networks.*/enable_neutron_provider_networks: "True"/' /etc/kolla/globals.yml || echo 'enable_neutron_provider_networks: "True"' >> /etc/kolla/globals.yml
+#code#
+
+
+
+#code#
+kolla-ansible -i /root/kolla-deploy/multinode certificates
+
+kolla-ansible -i /root/kolla-deploy/multinode bootstrap-servers
+
+kolla-ansible -i /root/kolla-deploy/multinode prechecks
+
+kolla-ansible -i /root/kolla-deploy/multinode pull
+
+kolla-ansible -i /root/kolla-deploy/multinode deploy
+#code#
+
+
+#code#
+kolla-ansible -i /root/kolla-deploy/multinode post-deploy
+#code#
+
+#code#
+yum install centos-release-openstack-rocky wget -y
+
+yum search python2 | awk '/client.noarch.*OpenStack/ {print $1}' | xargs yum install -y
+#code#
+
+#code#
+ln -s /etc/kolla/admin-openrc.sh /root/
+source /root/admin-openrc.sh
+#code#
+
+#code#
+openstack complete --shell bash | tee /etc/bash_completion.d/os.bash
+source /etc/bash_completion.d/os.bash
+#code#
+
+#code#
+openstack network create --share --external --provider-physical-network physnet1 --provider-network-type flat ext-net-flat
+
+openstack subnet create --network ext-net-flat --allocation-pool start=192.168.100.100,end=192.168.100.250 --dns-nameserver 8.8.8.8 --gateway 192.168.100.1 --subnet-range 192.168.100.0/24 ext-subnet-flat
+
+openstack flavor create --ram 128 --disk 4 --swap 0 --vcpus 1 --public cirros-flavor
+#code#
+
+
+
+
+#code#
+NAME=deadpool
+openstack domain create ${NAME}-domain
+openstack project create --domain ${NAME}-domain ${NAME}-project
+openstack user create --domain ${NAME}-domain  --password ${NAME}-123456 ${NAME}-user
+openstack role add --project-domain ${NAME}-domain --project ${NAME}-project --user-domain ${NAME}-domain --user ${NAME}-user admin
+#code#
+
+#code#
+cat << EOF > /root/${NAME}-openrc
+export OS_PROJECT_DOMAIN_NAME=${NAME}-domain
+export OS_USER_DOMAIN_NAME=${NAME}-domain
+export OS_PROJECT_NAME=${NAME}-project
+export OS_TENANT_NAME=${NAME}-project
+export OS_USERNAME=${NAME}-user
+export OS_PASSWORD=${NAME}-123456
+export OS_AUTH_URL=http://controllernode01.xurupita.nl:5000/v3
+export OS_INTERFACE=internal
+export OS_IDENTITY_API_VERSION=3
+export OS_REGION_NAME=RegionOne
+export OS_AUTH_PLUGIN=password
+unset 
+EOF
+#code#
+
+#code#
+source /root/${NAME}-openrc
+wget https://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img
+openstack image create "${NAME}-cirros" --file cirros-0.4.0-x86_64-disk.img --disk-format qcow2 --container-format bare --private
+#code#
+
+#code#
+openstack network create ${NAME}-net
+openstack subnet create --network ${NAME}-net --subnet-range 192.168.8.0/24 --allocation-pool start=192.168.8.10,end=192.168.8.200 ${NAME}-subnet
+#code#
+
+#code#
+openstack router create ${NAME}-router
+openstack router add subnet ${NAME}-router ${NAME}-subnet
+openstack router set ${NAME}-router --external-gateway ext-net-flat
+#code#
+
+#code#
+openstack server create --flavor cirros-flavor --image "${NAME}-cirros" --nic net-id=${NAME}-net cirros-${NAME}1
+#code#
+
+
+
+

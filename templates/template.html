@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 style="text-align:center;"> {{ my_site_name }} </h1>
+{%- for k,v in parsered -%}
+
+
+
+{%- if k == '#code#' -%}
+<div class="numerallines">
+  <table cellspacing="0" cellpadding="0" border="1">
+    <tbody>
+      <tr>
+        <td class="gutter">
+          {% for i in v %}
+          <div class="line number1 index0 alt0">{{ loop.index }}</div>
+          {%- endfor -%}
+        </td>
+        <td class="code">
+          <div class="container">
+          <div class="line number1 index0 alt1">{% for i in v %}{{ i }}
+{% endfor %}
+            </div>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{%- endif -%}
+
+{%- if k == '#intlink#' -%}
+{% for i in v %}
+<p class="link"><a href="{{ WEB_URL }}/{{ i }}.html">{{ i }}</a></p>
+{% endfor %}
+{%- endif -%}
+
+{%- if k == 'line' -%}
+{% for i in v %}
+<div class="text"><p>{{ i }}</p> </div>
+{% endfor %}
+{%- endif -%}
+
+{%- if k == '#whichserver#' -%}
+{% for i in v %}
+<div class="whichserver"> <img src={{ WEB_URL }}/static/images/term1.jpeg alt="which_server" width="52" height="52" align="left"> <p>{{ i }}</p> </div>
+{% endfor %}
+{%- endif -%}
+
+{%- if k == '#subtitle#' -%}
+{% for i in v %}
+<p class="textsubtitle">{{ i }}</p>
+{% endfor %}
+{%- endif -%}
+
+{%- if k == '#image#' -%}
+{% for i in v %}
+<img class="centerimage" src="{{ WEB_URL }}/{{ i }}" style="width:50%;">
+{% endfor %}
+{%- endif -%}
+
+
+{#
+            elif asciinema > 0:
+              each_line.append('<asciinema-player src='+ site_address + '/' + i + ' "preload=1 poster="npt:1"  ></asciinema-player>')
+              copy_files(i)
+            elif image > 0:
+              copy_files(i)
+#}
+
+
+
+
+{%- endfor -%}
+{% endblock %}
