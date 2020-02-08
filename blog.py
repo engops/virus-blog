@@ -21,7 +21,7 @@ for i in os.listdir( pages ):
   else:
     os.mkdir( dest_dir )
 
-def Indexer_time( filename ):
+def Indexer_Time( filename ):
   x = datetime.datetime.now()
   f = io.open(filename,'r', encoding="utf-8")
   temp = f.read()
@@ -31,6 +31,22 @@ def Indexer_time( filename ):
     f.write("##markdate##\n")
     f.write("%s/%s/%s\n" % (x.day, x.month, x.year) )
     f.write("##markdate##\n")
+    f.close()
+    f = io.open(filename, 'a')
+    f.write(temp)
+    f.close()
+
+def Indexer_Title( filename ):
+  x = datetime.datetime.now()
+  f = io.open(filename,'r', encoding="utf-8")
+  temp = f.read()
+  f.close()
+  if not re.search(r'#title#', temp): 
+    filename_path = os.path.split(filename)[-1].replace('.site','').replace('_',' ')
+    f = open(filename, 'w')
+    f.write("#title#\n")
+    f.write("%s\n" % filename_path)
+    f.write("#title#\n")
     f.close()
     f = io.open(filename, 'a')
     f.write(temp)
@@ -69,7 +85,8 @@ def Render(file_html, to_render):
   f.close()
 
 def Parser(frompages):
-  Indexer_time( frompages )
+  Indexer_Title( frompages )
+  Indexer_Time( frompages )
   parsered_array = []
   marker=0
   dic={}
@@ -109,6 +126,7 @@ def Getter_time():
       for k,v in Parser( source_page ):
         if k == '##markdate##':
           for the_date in v:
+            print(the_date)
             originalorder.append({'date':the_date, 'file':os.path.join( dirs,site )})
   return sorted( originalorder, key=lambda x: datetime.datetime.strptime(x['date'], '%d/%m/%Y'), reverse=True)
 

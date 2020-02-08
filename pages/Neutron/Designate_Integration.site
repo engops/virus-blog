@@ -1,1 +1,106 @@
-../Desginate/Neutron_Integration.site
+##markdate##
+7/2/2020
+##markdate##
+#title#
+Designate_Integration
+#title#
+
+#subtitle#
+Neutron Integration
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT external_dns_driver designate
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT dns_domain xurupita.nl
+#code#
+
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf designate url http://simplecontroller:9001/v2
+openstack-config --set /etc/neutron/neutron.conf designate auth_type password
+openstack-config --set /etc/neutron/neutron.conf designate auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf designate username designate
+openstack-config --set /etc/neutron/neutron.conf designate password DESIGNATE_PASS
+openstack-config --set /etc/neutron/neutron.conf designate project_name service
+openstack-config --set /etc/neutron/neutron.conf designate project_domain_name Default
+openstack-config --set /etc/neutron/neutron.conf designate user_domain_name Default
+openstack-config --set /etc/neutron/neutron.conf designate allow_reverse_dns_lookup True
+openstack-config --set /etc/neutron/neutron.conf designate ipv4_ptr_zone_prefix_size 24
+openstack-config --set /etc/neutron/neutron.conf designate ptr_zone_email admin@xuruita.nl
+openstack-config --set /etc/neutron/neutron.conf designate insecure true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security,dns_domain_ports
+#code#
+
+#code#
+systemctl restart neutron-*
+#code#
+
+#code#
+source admin_openrc
+#code#
+
+This is necessary because the segmentation id can't be the same of tenants' VXLAN 
+#code#
+openstack network segment range create --project-domain mydomain --project myproject --network-type vxlan --minimum 100 --maximum 199 range100-199
+#code#
+
+#code#
+source myuser_openrc
+#code#
+
+#code#
+openstack network create mydnsnet
+#code#
+
+#code#
+openstack subnet create --network mydnsnet --subnet-range 10.28.8.0/24 --allocation-pool start=10.28.8.10,end=10.28.8.200 mydnsnet
+#code#
+
+#code#
+openstack network set --dns-domain mydnsdomain.com. mydnsnet
+#code#
+
+#code#
+openstack port create --dns-name newrecord --network mydnsnet port001
+#code#
+
+
+#code#
+openstack recordset list mydnsdomain.com.
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
