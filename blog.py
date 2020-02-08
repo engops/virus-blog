@@ -120,14 +120,18 @@ def Parser(frompages):
 
 def Getter_time():
   originalorder = []
+  title = ''
   for dirs,sites in Dirs():
     for site in sites:
       source_page = os.path.join( pages,os.path.join( dirs,site ))
       for k,v in Parser( source_page ):
         if k == '##markdate##':
           for the_date in v:
-            print(the_date)
-            originalorder.append({'date':the_date, 'file':os.path.join( dirs,site )})
+            date = the_date
+        if k == '#title#':
+          for the_title in v:
+            title = the_title
+            originalorder.append({'date':the_date, 'file':os.path.join( dirs,site ), 'title':title })
   return sorted( originalorder, key=lambda x: datetime.datetime.strptime(x['date'], '%d/%m/%Y'), reverse=True)
 
 app = Flask('Blog')
