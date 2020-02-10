@@ -255,18 +255,34 @@ html, body {
 
 <div class="sidenav">
   <a href="{{WEB_URL}}/index.html">Welcome</a>
-  {% for dirs,sites in Dirs() -%}
-  <button class="dropdown-btn">{{ dirs }}
+
+  {% for pags in treta() %}
+  <button class="dropdown-btn">{{ pags['name'] }}
     <i class="fa-caret-down"></i>
-    <img src="{{WEB_URL}}/static/images/drop-down-arrow.png" alt="image" style="width:15px">
+    <img src="http://127.0.0.1:83/static/images/drop-down-arrow.png" alt="image" style="width:15px">
   </button>
-  <div class="dropdown-container">
-    {% for site in sites -%}
-    <a href="{{ WEB_URL }}/{{ dirs }}/{{ site.replace('site','html') }}">{{ site.replace('.site','').replace('_',' ') }}</a>
-    {% endfor -%}
-  </div>
+    <div class="dropdown-container">
+  {% for sub_or_f in pags['children'] -%}
+  {% if sub_or_f['type'] == 'file' -%}
+      <a href="{{ WEB_URL }}/{{ pags['name'] }}/{{ sub_or_f['name'].replace('site','html') }}">{{ sub_or_f['name'].replace('.site','').replace('_',' ') }}</a>
+  {%else%}
+    <button class="dropdown-btn">{{ sub_or_f['name'] }}
+      <i class="fa-caret-down"></i>
+      <img src="http://127.0.0.1:83/static/images/drop-down-arrow.png" alt="image" style="width:15px">
+    </button>
+    <div class="dropdown-container">
+    {% for sub_sub in sub_or_f['children'] %}
+      <a href="{{ WEB_URL }}/{{ pags['name'] }}//{{ sub_or_f['name']}}/{{sub_sub['name'].replace('site','html') }}">{{ sub_sub['name'].replace('.site','').replace('_',' ') }}</a>
+    {% endfor %}
+    </div>
+  {% endif -%}
+
+  {% endfor -%}
+    </div>
 {% endfor -%}
+
 </div>
+
 
 <script>
 var dropdown = document.getElementsByClassName("dropdown-btn");
