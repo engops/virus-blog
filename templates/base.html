@@ -259,7 +259,7 @@ html, body {
   {% for pags in treta() %}
   <button class="dropdown-btn">{{ pags['name'] }}
     <i class="fa-caret-down"></i>
-    <img src="http://127.0.0.1:83/static/images/drop-down-arrow.png" alt="image" style="width:15px">
+    <img src="{{WEB_URL}}/static/images/drop-down-arrow.png" alt="image" style="width:15px">
   </button>
     <div class="dropdown-container">
   {% for sub_or_f in pags['children'] -%}
@@ -268,11 +268,11 @@ html, body {
   {%else%}
     <button class="dropdown-btn">{{ sub_or_f['name'] }}
       <i class="fa-caret-down"></i>
-      <img src="http://127.0.0.1:83/static/images/drop-down-arrow.png" alt="image" style="width:15px">
+      <img src="{{WEB_URL}}/static/images/drop-down-arrow.png" alt="image" style="width:15px">
     </button>
     <div class="dropdown-container">
     {% for sub_sub in sub_or_f['children'] %}
-      <a href="{{ WEB_URL }}/{{ pags['name'] }}//{{ sub_or_f['name']}}/{{sub_sub['name'].replace('site','html') }}">{{ sub_sub['name'].replace('.site','').replace('_',' ') }}</a>
+      <a href="{{ WEB_URL }}/{{ pags['name'] }}/{{ sub_or_f['name']}}/{{sub_sub['name'].replace('site','html') }}">{{ sub_sub['name'].replace('.site','').replace('_',' ') }}</a>
     {% endfor %}
     </div>
   {% endif -%}
