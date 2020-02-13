@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+#from collections import OrderedDict
 import datetime
 from flask import render_template, Flask
 from flask import Flask
-import json
 import io
 import os
 import shutil
@@ -75,10 +75,6 @@ def path_to_dict(path):
 
 def treta():
   return path_to_dict(pages)
-  #i = json.dumps(path_to_dict(pages), sort_keys=True)
-  #o = json.loads(i)
-  #print o
-  #return o
 
 def Indexer_Time( filename ):
   x = datetime.datetime.now()
@@ -172,9 +168,6 @@ def Getter_time():
 app = Flask('Blog')
 if __name__ == "__main__":
   with app.app_context():
-    j=json.dumps(path_to_dict(pages), ensure_ascii=False)
-    jl=json.loads(j, encoding="utf-8")
-  
     for pags in treta():
       for sub_or_f in pags['children']:
         if sub_or_f['type'] == 'file':
@@ -194,7 +187,6 @@ if __name__ == "__main__":
                   )
               Render( os.path.join( pags['name'], os.path.join( sub_or_f['name'], sub_sub_f['name'] ).replace('site','html')), r_index)
 
-#####################################################################################################################################################################
   with app.app_context():
     r_index = render_template('welcome.html', 
               WEB_URL=WEB_URL,
@@ -202,4 +194,12 @@ if __name__ == "__main__":
               Getter_time=Getter_time,
               )
     Render('index.html', r_index)
+
+  with app.app_context():
+    r_index = render_template('teste.html', 
+              WEB_URL=WEB_URL,
+              treta=treta,
+              )
+    Render('teste.html', r_index)
+
 
