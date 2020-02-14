@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-  <h1 style="text-align:center;"> {{ my_site_name }} </h1>
-{%- for k,v in parsered -%}
 
+{%- for k,v in parsered -%}
+{%- if k == '#title#' -%}
+{% for i in v %}
+  <h1 style="text-align:center;"> {{ i }} </h1>
+{% endfor %}
+{%- endif -%}
 
 
 {%- if k == '#code#' -%}

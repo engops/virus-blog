@@ -1,11 +1,19 @@
+#title#
+Install and configure Designate - DNS as a Service (DNSaaS)
+#title#
 ##markdate##
 6/2/2020
 ##markdate##
 
+Make sure that you followed or have some environment like this link
+#intlink#
+OpenStack/Base
+#intlink#
+
+
 #subtitle#
 BIND 9
 #subtitle#
-
 
 #whichserver#
 simpleservices
@@ -250,6 +258,20 @@ openstack recordset create --record '10.0.0.1' --type A mydnsdomain.com. www
 #code#
 dig @192.168.88.6 www.mydnsdomain.com
 #code#
+
+
+#subtitle#
+Designate UI - integration with Horizon
+#subtitle#
+
+#code#
+yum install openstack-designate-ui -y
+#code#
+
+#code#
+systemctl restart httpd
+#code#
+
 
 
 

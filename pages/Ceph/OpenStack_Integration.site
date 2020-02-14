@@ -1,3 +1,6 @@
+#title#
+OpenStack Integration
+#title#
 ##markdate##
 5/2/2020
 ##markdate##
@@ -267,7 +270,6 @@ openstack-config --set /etc/nova/nova.conf libvirt inject_partition -2
 #code#
 openstack-config --set /etc/nova/nova.conf libvirt rbd_secret_uuid b1df3518-5c60-414a-a165-d992f5336a62
 #code#
-
 
 #code#
 systemctl restart openstack-nova-compute.service
