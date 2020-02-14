@@ -26,7 +26,9 @@ kubectl create deployment --image=nginx nginx
 Create Deployment with replicas
 #code#
 kubectl create deployment --image=nginx nginx
-kubectl scale dc/nginx --replicas=4
+kubectl scale deployment/nginx --replicas=4
 #code#
 
 Either, you may want generate the deployment YAML file and than update the replica options
+
+
