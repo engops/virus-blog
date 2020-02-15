@@ -1,0 +1,83 @@
+#title#
+Configure a cluster of MariaDB Galera
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+
+#code#
+cat << 'EOF' > /etc/yum.repos.d/mariadb.repo
+[mariadb]
+name = MariaDB
+baseurl = http://yum.mariadb.org/10.1/centos7-amd64
+gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+gpgcheck=1
+enabled=1
+EOF
+#code#
+
+#code#
+yum install MariaDB-server MariaDB-client MariaDB-shared MariaDB-common rsync galera socat -y
+#code#
+
+#code#
+/etc/init.d/mysql start
+#code#
+
+#code#
+mysqladmin password '123456'
+#code#
+
+#code#
+mysql -u root -p'123456' -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '123456' WITH GRANT OPTION ; FLUSH PRIVILEGES"
+#code#
+
+#code#
+/etc/init.d/mysql stop
+#code#
+
+#code#
+cat <<EOF>  /etc/my.cnf.d/galera.cnf
+[galera]
+binlog_format=ROW
+default-storage-engine=innodb
+innodb_autoinc_lock_mode=2
+innodb_locks_unsafe_for_binlog=1
+query_cache_size=0
+query_cache_type=0
+bind-address=0.0.0.0
+datadir=/var/lib/mysql
+innodb_log_file_size=100M
+innodb_file_per_table
+innodb_flush_log_at_trx_commit=2
+wsrep_on=ON
+wsrep_provider=/usr/lib64/galera/libgalera_smm.so
+wsrep_cluster_name="kolla_test"
+wsrep_cluster_address="gcomm://mariadb01.localdomain,mariadb02.localdomain,mariadb03.localdomain"
+wsrep_node_address="$(hostname -I | awk '{print $1}')"
+wsrep_node_name="$HOSTNAME"
+wsrep_sst_method=rsync
+wsrep_provider_options = "gmcast.listen_addr=tcp://0.0.0.0:4567"
+EOF
+#code#
+
+
+## only on mariadb01.localdomain
+#code#
+galera_new_cluster
+#code#
+
+## on others
+#code#
+service mysql start
+#code#
+
+#code#
+mysql -uroot -p123456 -e "show STATUS like '%wsrep%'"
+mysql -uroot -p123456 -e "SHOW STATUS LIKE 'wsrep_cluster_size'"
+mysql -uroot -p123456 -e "SHOW VARIABLES LIKE 'wsrep_node_name'"
+#code#
+
+
+

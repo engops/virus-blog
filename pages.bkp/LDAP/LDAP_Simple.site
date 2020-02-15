@@ -1,0 +1,249 @@
+#title#
+LDAP Simple
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+#subtitle#
+How to install a simple ldap to improve your tests
+#subtitle#
+
+
+
+#code#
+yum install openldap-clients openldap-servers -y
+#code#
+
+#code#
+systemctl enable slapd.service
+#code#
+
+#code#
+cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+#code#
+
+#code#
+chown ldap\: /var/lib/ldap/DB_CONFIG
+#code#
+
+#code#
+systemctl start slapd.service
+#code#
+
+
+#code#
+LDAPPASSWD=$(slappasswd -s 123456)
+#code#
+
+#code#
+cat << EOF > ch-cnconfig-pw.ldif
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: $LDAPPASSWD
+EOF
+#code#
+
+#code#
+ldapadd -Y EXTERNAL -H ldapi:/// -f ch-cnconfig-pw.ldif
+#code#
+
+#code#
+ldapadd -c -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/cosine.ldif
+#code#
+
+#code#
+ldapadd -c -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/inetorgperson.ldif
+#code#
+
+#code#
+ldapadd -c -Y EXTERNAL -H ldapi:/// -f /etc/openldap/schema/nis.ldif
+#code#
+
+#code#
+ldapsearch -x -Dcn=config -b cn=config -w123456 -h localhost
+#code#
+
+
+######
+
+#code#
+cat << EOF > createbase.ldif
+dn: olcDatabase={1}monitor,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
+  read by dn.base="cn=admin,dc=xurupita,dc=nl" read by * none
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=xurupita,dc=nl
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=xurupita,dc=nl
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: $LDAPPASSWD
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by
+  dn="cn=admin,dc=xurupita,dc=nl" write by anonymous auth by self write by * none
+olcAccess: {1}to dn.base="" by * read
+olcAccess: {2}to * by dn="cn=admin,dc=xurupita,dc=nl" write by * read
+EOF
+#code#
+
+#code#
+ldapmodify -Y EXTERNAL -H ldapi:/// -f createbase.ldif
+#code#
+
+#code#
+ldapsearch -x -Dcn=config -b cn=config -w123456 -h localhost
+#code#
+
+######
+
+#code#
+cat << EOF > base.ldif
+dn: dc=xurupita,dc=nl
+objectClass: top
+objectClass: organization
+objectClass: dcObject
+dc: xurupita
+o: xurupita
+EOF
+#code#
+
+
+#code#
+ldapadd -x -h localhost -Dcn=admin,dc=xurupita,dc=nl -w123456 -f base.ldif
+#code#
+
+#code#
+ldapsearch -x -Dcn=admin,dc=xurupita,dc=nl -bdc=xurupita,dc=nl -w123456 -h localhost
+#code#
+
+######
+
+#code#
+cat << EOF > grupousers.ldif
+dn: ou=Grupos,dc=xurupita,dc=nl
+objectClass: top
+objectClass: organizationalUnit
+ou: Grupos
+
+dn: ou=Usuarios,dc=xurupita,dc=nl
+objectClass: top
+objectClass: organizationalUnit
+ou: Usuarios
+EOF
+#code#
+
+#code#
+ldapadd -x -h localhost -Dcn=admin,dc=xurupita,dc=nl -w123456 -f grupousers.ldif
+#code#
+
+#code#
+ldapsearch -x -Dcn=admin,dc=xurupita,dc=nl -bdc=xurupita,dc=nl -w123456 -h localhost
+#code#
+
+
+######
+
+#code#
+cat <<'EOF' > /usr/local/sbin/xurupita-adduser.sh
+#!/bin/bash
+6001
+
+ola=$(sed -n '2p' $0) &> /dev/null
+tr=$(expr $ola + 1)
+
+echo "o nome do usuario"
+read user
+
+cat << EOFa > $user-grupo.ldif
+dn: cn=$user,ou=Grupos,dc=xurupita,dc=nl
+objectClass: posixGroup
+objectClass: top
+cn: $user
+userPassword: {crypt}x
+gidNumber: $ola
+EOFa
+
+cat << EOFb > $user.ldif
+dn: uid=$user,ou=Usuarios,dc=xurupita,dc=nl
+uid: $user
+cn: $user
+objectclass: account
+objectClass: posixAccount
+objectClass: top
+objectClass: shadowAccount
+userPassword: 123456
+shadowLastChange: 15140
+shadowMin: 0
+shadowMax: 99999
+shadowWarning: 7
+loginShell: /bin/bash
+uidNumber: $ola
+gidNumber: $ola
+homeDirectory: /home/$user
+gecos: $user
+description: $user@xurupita.nl
+EOFb
+
+ldapadd -x -h localhost -D"cn=admin,dc=xurupita,dc=nl" -w '123456' -f $user-grupo.ldif 
+sleep 1
+ldapadd -x -h localhost  -D"cn=admin,dc=xurupita,dc=nl" -w '123456' -f $user.ldif
+
+rm -rf $user.ldif $user-grupo.ldif
+sed 2s/$ola/$tr/ $0 -i
+EOF
+#code#
+
+
+#code#
+chmod +x /usr/local/sbin/xurupita-adduser.sh
+#code#
+
+######
+
+#code#
+cat << 'EOF' > /usr/local/sbin/xurupita-addgroup.sh
+#!/bin/bash
+
+ola=$(sed -n '2p' /usr/local/sbin/xurupita-adduser.sh) &> /dev/null
+tr=$(expr $ola + 1)
+
+echo 'nome do grupo'
+read grup
+
+cat << EOFc > $grup.ldif
+dn: cn=$grup,ou=Grupos,dc=xurupita,dc=nl
+objectClass: posixGroup
+objectClass: top
+cn: $grup
+userPassword: {crypt}x
+gidNumber: $ola
+EOFc
+
+ldapadd -x -D cn=admin,dc=xurupita,dc=nl -w '123456' -f $grup.ldif
+
+rm -rf $grup.ldif
+
+sed 2s/$ola/$tr/ /usr/local/sbin/xurupita-adduser.sh -i
+EOF
+#code#
+
+#code#
+chmod +x /usr/local/sbin/xurupita-addgroup.sh
+#code#
+
+
