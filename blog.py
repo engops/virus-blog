@@ -154,6 +154,7 @@ def all_sites():
 def Getter_time():
   originalorder = []
   title = ''
+  date = '14/08/1987'
   for source_page in all_sites():
     for k,v in Parser(os.path.join(pages, source_page )):
       if k == '##markdate##':
@@ -162,7 +163,7 @@ def Getter_time():
       if k == '#title#':
         for the_title in v:
           title = the_title
-          originalorder.append({'date':the_date, 'file':source_page, 'title':title })
+          originalorder.append({'date':date, 'file':source_page, 'title':title })
   return sorted( originalorder, key=lambda x: datetime.datetime.strptime(x['date'], '%d/%m/%Y'), reverse=True)
 
 app = Flask('Blog')
