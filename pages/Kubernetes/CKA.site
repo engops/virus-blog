@@ -5,6 +5,10 @@
 CKA
 #title#
 
+Prerequisite
+#intlink#
+Kubernetes/How_to_install_K8S
+#intlink#
 
 #whichserver#
 Imperative Commands
