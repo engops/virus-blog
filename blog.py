@@ -5,6 +5,7 @@
 import datetime
 from flask import render_template, Flask
 from flask import Flask
+import json
 import io
 import os
 import shutil
@@ -71,7 +72,7 @@ def path_to_dict(path):
             dic['children'] = fodinha
             foda.append(dic)
             break
-  return foda         
+  return foda
 
 def treta():
   return path_to_dict(pages)

@@ -1,36 +1,92 @@
-#title#
-Base
-#title#
 ##markdate##
 5/2/2020
 ##markdate##
+#title#
+Manual basic instalation (Simple OpenStack)
+#title#
+
 
 
 This is a simple how-to to show how install openstack manually using the packages from repository, we will install only two machines, on to be the "controller" (where all services will installed) and other to be the compute-node as well we will have tow networks, the imagem bellow show how will be the environment.
 
 #image#
-OpenStack/screenshot-2.png
+OpenStack/environment.png
 #image#
 
 
-#subtitle#
-All machines!!!
-#subtitle#
+first of all configure the name and ips on all machines like the commands bellow.
 
-first of all configure the name and ips on all machines like the image above.
+#whichserver#
+simpleservices
+#whichserver#
+#code#
+hostnamectl set-hostname simpleservices.xurupita.nl
+#code#
 
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.6
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
 #code#
 hostnamectl set-hostname simplecontroller.xurupita.nl
 #code#
 
 #code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.7
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
+#code#
+
+#whichserver#
+simplecompute
+#whichserver#
+#code#
 hostnamectl set-hostname simplecompute.xurupita.nl
 #code#
 
 #code#
-hostnamectl set-hostname simpleservices.xurupita.nl
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.11
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
 #code#
 
+
+#whichserver#
+All machines!!!
+#whichserver#
 
 Disable the SELinux:
 #code#
@@ -50,6 +106,7 @@ systemctl stop NetworkManager
 systemctl disable NetworkManager
 #code#
 
+Because we are not using some DNS as authoritative of xurupita.nl add to '/etc/hosts' these lines:
 #code#
 cat << 'EOF' > /etc/hosts
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
@@ -142,10 +199,12 @@ SQL DataBase
 simplecontroller
 #whichserver#
 
+Install the MariaDB service and the python connector:
 #code#
 yum install mariadb mariadb-server python2-PyMySQL -y
 #code#
 
+Configure the '/etc/my.cnf.d/openstack.cnf' to ensure that MySQL will work InnoDB and UTF also set to be open the port 3306 on all ips that we'll have:
 #code#
 cat <<'EOF'> /etc/my.cnf.d/openstack.cnf
 [mysqld]
@@ -158,6 +217,7 @@ character-set-server = utf8
 EOF
 #code#
 
+Enable and start the MariaDB service:
 #code#
 systemctl enable mariadb.service
 systemctl start mariadb.service
@@ -168,9 +228,11 @@ Test if it is ok:
 mysql -u root -e "show databases"
 #code#
 
+Set a passowrd to root user (root only on MariaDB will have this password) be able to connect remotly if necessary:
 #code#
 mysql -u root -e "grant all privileges on *.* to root@'%' identified by 'MDB_PASS' with grant option; flush privileges"
 #code#
+
 
 #subtitle#
 Message Queue
@@ -180,32 +242,31 @@ Message Queue
 simplecontroller
 #whichserver#
 
-
+Install the RabbitMQ service to provide the message system:
 #code#
 yum install rabbitmq-server -y
 #code#
 
+Enable the managment portal, it will expose many informations on web console, the default port is 15672, in our case try http://192.168.88.7:15672 after create the user and set the permission on next steps:
 #code#
 rabbitmq-plugins enable rabbitmq_management
 #code#
 
+
+Enable and start the RabbitMQ Server service:
 #code#
 systemctl enable rabbitmq-server.service
 systemctl start rabbitmq-server.service
 #code#
 
+Create, set password and set permission of the 'openstack' user, this user will be used to connect each OpenStack service on RabbitMQ:
 #code#
 rabbitmqctl add_user openstack RABBIT_PASS
-#code#
-
-#code#
 rabbitmqctl set_user_tags openstack administrator
-#code#
-
-#code#
 rabbitmqctl set_permissions openstack ".*" ".*" ".*"
 #code#
 
+Chech if all is correctly configured:
 #code#
 curl -i -u openstack:RABBIT_PASS http://192.168.88.7:15672/api/whoami
 #code#

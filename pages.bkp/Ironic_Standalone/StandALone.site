@@ -7,7 +7,7 @@
 BareMetal as a Service (Ironic) - StandAlone
 #title#
 
-#code#
+#code#   
 setenforce 0
 sed s/SELINUX=.*/SELINUX=disabled/ /etc/selinux/config -i
 #code#
