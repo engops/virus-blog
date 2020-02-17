@@ -1,8 +1,14 @@
+##markdate##
+17/2/2020
+##markdate##
+#title#
+Calico Base
+#title#
+
 To do this section is advise finalized or have enviroment equal the section bellow: 
 #intlink#
 OpenStack/Base/Instalation_Base
 #intlink#
-
 
 
 #subtitle#
@@ -12,6 +18,25 @@ Networking service (Neutron)
 #whichserver#
 simplecontroller
 #whichserver#
+
+#code#
+cat <<'EOF'> /etc/yum.repos.d/calico.repo
+[calico]
+name=Calico Repository
+baseurl=https://binaries.projectcalico.org/rpm/calico-3.9/
+enabled=1
+skip_if_unavailable=0
+gpgcheck=1
+gpgkey=https://binaries.projectcalico.org/rpm/calico-3.9/key
+priority=97
+EOF
+#code#
+
+#code#
+yum install calico-control -y
+#code#
+
+
 
 First of all, create the Neutron database and set the password to enable the connection on this database with user neutron:
 #code#
