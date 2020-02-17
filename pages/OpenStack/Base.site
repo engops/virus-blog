@@ -1010,6 +1010,52 @@ openstack hypervisor list
 
 
 #subtitle#
+Dashboard (Horizon)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the Horizon packge:
+#code#
+yum install openstack-dashboard -y
+#code#
+
+Determine which OpenStack this Horizon will conect:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_HOST '"simplecontroller"'
+#code#
+
+Set where from will be accept connections:
+#code#
+sed -e 's/ALLOWED_HOSTS.*/ALLOWED_HOSTS = ["*"]/' /etc/openstack-dashboard/local_settings -i
+#code#
+
+Set Horizon to store the Session and Cache on Memcached:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' SESSION_ENGINE "'django.contrib.sessions.backends.cache'"
+openstack-config --set /etc/openstack-dashboard/local_settings '' CACHES "{'default': {'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache','LOCATION': 'simplecontroller:11211',}}"
+#code#
+
+Enable the Horizon to work with multiple Domains:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT True
+#code#
+
+Chose the default Role to be used by Horizon:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_DEFAULT_ROLE '"member"'
+#code#
+
+Restart the Apache to be affected by the changes:
+#code#
+systemctl restart httpd.service
+#code#
+
+
+
+#subtitle#
 Networking service (Neutron)
 #subtitle#
 
@@ -1583,47 +1629,4 @@ openstack server add volume myvxlanvm1 vol01
 openstack server create --flavor cirros-flavor --volume volimg01 --nic net-id=mynet myvxlanvmFromvol1
 #code#
 
-
-#subtitle#
-Dashboard (Horizon)
-#subtitle#
-
-
-#whichserver#
-simplecontroller
-#whichserver#
-
-
-Install the Horizon packge:
-#code#
-yum install openstack-dashboard -y
-#code#
-
-#code#
-openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_HOST '"simplecontroller"'
-#code#
-
-#code#
-sed -e 's/ALLOWED_HOSTS.*/ALLOWED_HOSTS = ["*"]/' /etc/openstack-dashboard/local_settings -i
-#code#
-
-#code#
-openstack-config --set /etc/openstack-dashboard/local_settings '' SESSION_ENGINE "'django.contrib.sessions.backends.cache'"
-#code#
-
-#code#
-openstack-config --set /etc/openstack-dashboard/local_settings '' CACHES "{'default': {'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache','LOCATION': 'simplecontroller:11211',}}"
-#code#
-
-#code#
-openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT True
-#code#
-
-#code#
-openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_DEFAULT_ROLE '"member"'
-#code#
-
-#code#
-systemctl restart httpd.service
-#code#
 
