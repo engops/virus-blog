@@ -10,6 +10,38 @@ To do this section is advise finalized or have enviroment equal the section bell
 OpenStack/Base/Instalation_Base
 #intlink#
 
+#subtitle#
+ETCD
+#subtitle#
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the ETCD that will be used by Calico:
+#code#
+yum install etcd -y
+#code#
+
+Configure the ETCD:
+#code#
+cat << EOF > /etc/etcd/etcd.conf
+ETCD_DATA_DIR="/var/lib/etcd/default.etcd"
+ETCD_LISTEN_PEER_URLS="http://192.168.88.7:2380"
+ETCD_LISTEN_CLIENT_URLS="http://192.168.88.7:2379"
+ETCD_NAME="simplecontroller"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.88.7:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.88.7:2379"
+ETCD_INITIAL_CLUSTER="simplecontroller=http://192.168.88.7:2380"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-calico"
+ETCD_INITIAL_CLUSTER_STATE="new"
+EOF
+#code#
+
+Enable and start the ETCD service:
+#code#
+systemctl enable etcd
+systemctl start etcd
+#code#
 
 #subtitle#
 Networking service (Neutron)
@@ -44,7 +76,167 @@ mysql -u root -e "CREATE DATABASE neutron"
 mysql -u root -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'NEUTRON_DBPASS'; flush privileges"
 #code#
 
+
+Now create the Neutron service as well add the your endpoints:
 #code#
 openstack service create --name neutron --description "OpenStack Networking" network
+openstack endpoint create --region EURegion network public http://simplecontroller:9696
+openstack endpoint create --region EURegion network internal http://simplecontroller:9696
+openstack endpoint create --region EURegion network admin http://simplecontroller:9696
 #code#
+
+
+Create the Neutron user also set the role admin on project service:
+#code#
+openstack user create --domain default --password NEUTRON_PASS neutron
+openstack role add --project service --user neutron admin
+#code#
+
+Install the Neutron packges:
+#code#
+yum install openstack-neutron -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:NEUTRON_DBPASS@simplecontroller/neutron
+#code#
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+Determine the OpenStack credentials on the Neutron configuration file:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
+#code#
+
+Enable the communication between Neutron and Nova, it is also used by Designate:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
+#code#
+
+
+Determine the OpenStack credentials for Nova service on the Neutron configuration file:
+#code#
+openstack-config --set /etc/neutron/neutron.conf nova auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova region_name EURegion
+openstack-config --set /etc/neutron/neutron.conf nova project_name service
+openstack-config --set /etc/neutron/neutron.conf nova username nova
+openstack-config --set /etc/neutron/neutron.conf nova password NOVA_PASS
+#code#
+
+To manage external resources and with multi-thead and/or multi-process is necessary manage the lock where will determine who is doing what:
+#code#
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#code#
+
+Set here that our core_plugin will be the Calico:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin calico
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf calico etcd_host 192.168.88.7
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf upgrade head" neutron
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot neutron -e "show tables" 
+#code#
+
+The Neutron-server will look for this file, so just create a empty file:
+#code#
+touch /etc/neutron/plugin.ini
+#code#
+
+Enable and start the Neutron Server service:
+#code#
+systemctl enable neutron-server.service
+systemctl start neutron-server.service
+#code#
+
+#code#
+openstack network agent list
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf neutron url http://simplecontroller:9696
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://simplecontroller:5000
+openstack-config --set /etc/nova/nova.conf neutron auth_type password
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron region_name EURegion
+openstack-config --set /etc/nova/nova.conf neutron project_name service
+openstack-config --set /etc/nova/nova.conf neutron username neutron
+openstack-config --set /etc/nova/nova.conf neutron password NEUTRON_PASS
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy true
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+systemctl restart openstack-nova-api.service
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

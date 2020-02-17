@@ -26,12 +26,10 @@ mysql -u root -e "CREATE DATABASE neutron"
 mysql -u root -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'NEUTRON_DBPASS'; flush privileges"
 #code#
 
-#code#
-openstack service create --name neutron --description "OpenStack Networking" network
-#code#
 
 Now create the Neutron service as well add the your endpoints:
 #code#
+openstack service create --name neutron --description "OpenStack Networking" network
 openstack endpoint create --region EURegion network public http://simplecontroller:9696
 openstack endpoint create --region EURegion network internal http://simplecontroller:9696
 openstack endpoint create --region EURegion network admin http://simplecontroller:9696
@@ -54,6 +52,12 @@ Set the database configurations created few steps above:
 openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:NEUTRON_DBPASS@simplecontroller/neutron
 #code#
 
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+
 #code#
 openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 #code#
@@ -70,17 +74,10 @@ openstack-config --set /etc/neutron/neutron.conf DEFAULT interface_driver openvs
 openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
 #code#
 
-Set the RabbitMQ credentions also which server we will work:
-#code#
-openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
-#code#
-
-#code#
-openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
-#code#
 
 Determine the OpenStack credentials on the Neutron configuration file:
 #code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
@@ -92,11 +89,9 @@ openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neu
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
 #code#
 
+Enable the communication between Neutron and Nova, it is also used by Designate:
 #code#
 openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
-#code#
-
-#code#
 openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
 #code#
 
@@ -113,6 +108,7 @@ openstack-config --set /etc/neutron/neutron.conf nova username nova
 openstack-config --set /etc/neutron/neutron.conf nova password NOVA_PASS
 #code#
 
+To manage external resources and with multi-thead and/or multi-process is necessary manage the lock where will determine who is doing what:
 #code#
 openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
 #code#
@@ -246,6 +242,7 @@ openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_hos
 openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret METADATA_SECRET
 #code#
 
+The Neutron-server will look for this file, so create the link:
 #code#
 ln -s /etc/neutron/plugins/ml2/ml2_conf.ini /etc/neutron/plugin.ini
 #code#
