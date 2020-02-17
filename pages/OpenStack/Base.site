@@ -382,7 +382,7 @@ systemctl start httpd.service
 
 Install the client, to manage the OpenStack and your services by CLI:
 #code#
-yum install python-openstackclient -y
+yum install python-openstackclient python-osc-placement -y
 #code#
 
 Check if it is everthing ok:
@@ -546,16 +546,12 @@ mysql -u root -e "CREATE DATABASE cinder"
 mysql -u root -e "GRANT ALL PRIVILEGES ON cinder.* TO 'cinder'@'%' IDENTIFIED BY 'CINDER_DBPASS' ; flush privileges"
 #code#
 
-#code#
-source admin_openrc
-#code#
 
 Create the Cinder user also set the role admin on project service:
 #code#
 openstack user create --domain default --password CINDER_PASS cinder
 openstack role add --project service --user cinder admin
 #code#
-
 
 Now create the Cinder V2 service as well add the your endpoints:
 #code#
@@ -565,7 +561,6 @@ openstack endpoint create --region EURegion volumev2 internal http://simplecontr
 openstack endpoint create --region EURegion volumev2 admin http://simplecontroller:8776/v2/%\(project_id\)s
 #code#
 
-
 And create the Cinder V3 service as well add the your endpoints:
 #code#
 openstack service create --name cinderv3 --description "OpenStack Block Storage" volumev3
@@ -573,7 +568,6 @@ openstack endpoint create --region EURegion volumev3 public http://simplecontrol
 openstack endpoint create --region EURegion volumev3 internal http://simplecontroller:8776/v3/%\(project_id\)s
 openstack endpoint create --region EURegion volumev3 admin http://simplecontroller:8776/v3/%\(project_id\)s
 #code#
-
 
 Install the Cinder packge:
 #code#
@@ -585,16 +579,14 @@ Set the database configurations created few steps above:
 openstack-config --set /etc/cinder/cinder.conf database connection mysql+pymysql://cinder:CINDER_DBPASS@simplecontroller/cinder 
 #code#
 
+Set the RabbitMQ credentions also which server we will work:
 #code#
 openstack-config --set /etc/cinder/cinder.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
 #code#
 
-#code#
-openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
-#code#
-
 Determine the OpenStack credentials on the Cinder configuration file:
 #code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://simplecontroller:5000
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken memcached_servers simplecontroller:11211
@@ -606,6 +598,7 @@ openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinde
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password CINDER_PASS
 #code#
 
+To manage external resources and with multi-thead and/or multi-process is necessary manage the lock where will determine who is doing what:
 #code#
 openstack-config --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
 #code#
@@ -621,6 +614,7 @@ systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
 systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
 #code#
 
+Check if the Cinder services are running, in this case should be only the scheduler:
 #code#
 openstack volume service list
 #code#
@@ -629,15 +623,19 @@ openstack volume service list
 #whichserver#
 simpleservices
 #whichserver#
+The propuse of the section is describe how to have some way to provide volumes on OpenStack, for this environment will be the NFS, but on this blog have or will have other ways to provide Block Storage.
 
+First of all, install the nfs-utils package that contain the nfs-server service:
 #code#
 yum install nfs-utils -y
 #code#
 
+create a new directory that will be used to share with other machines through NFS protocol: 
 #code#
 mkdir /mnt/vol01
 #code#
 
+Inside the NFS configuration file, write the config about the directory recently created:
 #code#
 echo '/mnt/vol01 *(rw,no_root_squash)' > /etc/exports
 #code#
@@ -647,6 +645,7 @@ Enable and start the NFS Server service:
 systemctl enable nfs-server
 #code#
 
+Check to see if it is all ok:
 #code#
 showmount -e
 #code#
@@ -656,25 +655,28 @@ showmount -e
 simplecontroller
 #whichserver#
 
-
+Install the same packge, but this time we'll (Cinder Volume'll) use the 'mount.nfs' command:
 #code#
 yum install nfs-utils -y
 #code#
 
+Determine that the backends enabled will be the 'nfsbkend':
 #code#
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends nfs
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends nfsbkend
 #code#
 
+Configure the Cinder Volume to work with the NFS protocol also determine the config file of our NFS Server:
+#code#
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_shares_config /etc/cinder/shares.conf
+openstack-config --set /etc/cinder/cinder.conf nfsbkend volume_driver cinder.volume.drivers.nfs.NfsDriver
+openstack-config --set /etc/cinder/cinder.conf nfsbkend volume_backend_name nfsbackendname
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_mount_options
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_sparsed_volumes True
+#code#
+
+Set where is our NFS server like bellow:
 #code#
 echo "simpleservices.xurupita.nl:/mnt/vol01" > /etc/cinder/shares.conf
-#code#
-
-#code#
-openstack-config --set /etc/cinder/cinder.conf nfs nfs_shares_config /etc/cinder/shares.conf
-openstack-config --set /etc/cinder/cinder.conf nfs volume_driver cinder.volume.drivers.nfs.NfsDriver
-openstack-config --set /etc/cinder/cinder.conf nfs volume_backend_name nfsbackend
-openstack-config --set /etc/cinder/cinder.conf nfs nfs_mount_options
-openstack-config --set /etc/cinder/cinder.conf nfs nfs_sparsed_volumes True
 #code#
 
 
@@ -684,16 +686,18 @@ systemctl enable openstack-cinder-volume
 systemctl restart openstack-cinder-api openstack-cinder-scheduler openstack-cinder-volume
 #code#
 
-Now is possible to see the mount of the NFS
+Now is possible to see the mount of the NFS:
 #code#
 mount
 #code#
 
+still admin user, create the type and correlate with the NFS server config:
 #code#
 openstack volume type create NFS
-openstack volume type set NFS --property volume_backend_name=nfsbackend
+openstack volume type set NFS --property volume_backend_name=nfsbackendname
 #code#
 
+Create a new volume:
 #code#
 openstack --os-auth-url http://simplecontroller:5000/v3 \
  --os-project-domain-name mydomain --os-user-domain-name mydomain \
@@ -701,6 +705,7 @@ openstack --os-auth-url http://simplecontroller:5000/v3 \
  volume create --type NFS --size 2 vol01
 #code#
 
+Create a new other volume, but this time from a image:
 #code#
 openstack --os-auth-url http://simplecontroller:5000/v3 \
  --os-project-domain-name mydomain --os-user-domain-name mydomain \
@@ -708,10 +713,12 @@ openstack --os-auth-url http://simplecontroller:5000/v3 \
  volume create --type NFS --image cirros --size 2 volimg01
 #code#
 
+List all volumes also their configs:
 #code#
 openstack volume type list --long
 #code#
 
+To finalize verify these new files on mount point:
 #code#
 ls -R /var/lib/cinder/mnt/
 #code#
@@ -728,12 +735,10 @@ mysql -u root -e "CREATE DATABASE placement"
 mysql -u root -e "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY 'PLACEMENT_DBPASS'; flush privileges"
 #code#
 
-#code#
-openstack service create --name placement --description "Placement API" placement
-#code#
 
 Now create the Placement service as well add the your endpoints:
 #code#
+openstack service create --name placement --description "Placement API" placement
 openstack endpoint create --region EURegion placement public http://simplecontroller:8778
 openstack endpoint create --region EURegion placement internal http://simplecontroller:8778
 openstack endpoint create --region EURegion placement admin http://simplecontroller:8778
@@ -777,6 +782,7 @@ Confirm looking if the tables are created:
 mysql -uroot placement -e "show tables"
 #code#
 
+This is a little workaround:
 #code#
 cat <<'EOF'>> /etc/httpd/conf.d/00-placement-api.conf
 <Directory /usr/bin>
@@ -791,14 +797,12 @@ cat <<'EOF'>> /etc/httpd/conf.d/00-placement-api.conf
 EOF
 #code#
 
+Restart the Apache to make the changes affect:
 #code#
 systemctl restart httpd
 #code#
 
-#code#
-yum install python-osc-placement -y
-#code#
-
+Check if is possible to connect to Placement endpoints, this command now don't will have output
 #code#
 openstack resource provider list
 #code#
@@ -846,6 +850,7 @@ openstack-config --set /etc/nova/nova.conf api_database connection mysql+pymysql
 openstack-config --set /etc/nova/nova.conf database connection mysql+pymysql://nova:NOVA_DBPASS@simplecontroller/nova
 #code#
 
+Set the RabbitMQ credentions also which server we will work:
 #code#
 openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
 #code#
@@ -863,23 +868,17 @@ openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
 openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
 #code#
 
-#code#
-openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.7
-#code#
-
-#code#
-openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address \$my_ip
-#code#
-
+Set where is the Glance service that this nova will talk:
 #code#
 openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
 #code#
 
+Also determine which Cinder Region this nova will talk:
 #code#
 openstack-config --set /etc/nova/nova.conf cinder os_region_name EURegion
 #code#
 
-
+Determine the OpenStack credentials for the service Placement on the Nova configuration file:
 #code#
 openstack-config --set /etc/nova/nova.conf placement region_name EURegion
 openstack-config --set /etc/nova/nova.conf placement project_domain_name Default
@@ -891,6 +890,7 @@ openstack-config --set /etc/nova/nova.conf placement username placement
 openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
 #code#
 
+This configuration is to add automatically new compute nodes to the cell:
 #code#
 openstack-config --set /etc/nova/nova.conf scheduler discover_hosts_in_cells_interval 300
 #code#
@@ -910,7 +910,7 @@ mysql -uroot nova_api -e "show tables"
 mysql -uroot nova -e "show tables"
 #code#
 
-
+Check if the cell are correctly configured:
 #code#
 su -s /bin/sh -c "nova-manage cell_v2 list_cells" nova
 #code#
@@ -923,12 +923,10 @@ systemctl start openstack-nova-api.service openstack-nova-scheduler.service \
  openstack-nova-conductor.service openstack-nova-novncproxy.service
 #code#
 
+List all services from Nova:
 #code#
 openstack compute service list
 #code#
-
-
-
 
 #whichserver#
 simplecompute
@@ -940,6 +938,8 @@ Install the Nova packge:
 yum install openstack-nova-compute -y   
 #code#
 
+
+Set the RabbitMQ credentions also which server we will work:
 #code#
 openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
 #code#
@@ -956,13 +956,6 @@ openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
 openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
 #code#
 
-#code#
-openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.11
-#code#
-
-#code#
-openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
-#code#
 
 Determine the OpenStack credentials for the service Placement on the Nova configuration file:
 #code#
@@ -976,17 +969,20 @@ openstack-config --set /etc/nova/nova.conf placement username placement
 openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
 #code#
 
+Configure the VNC to enable the 'simplecontroller' be a proxy from external environmet to the internal machines:
 #code#
 openstack-config --set /etc/nova/nova.conf vnc enabled true
 openstack-config --set /etc/nova/nova.conf vnc server_listen 0.0.0.0
-openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address \$my_ip
-openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://simplecontroller:6080/vnc_auto.html
+openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address 192.168.88.11
+openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://192.168.88.7:6080/vnc_auto.html
 #code#
 
+Determine which Glance service will be used by this Nova Compute:
 #code#
 openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
 #code#
 
+This little script will look if the processor supoort virtualization:
 #code#
 if egrep -q '(vmx|svm)' /proc/cpuinfo
   then 
@@ -1006,11 +1002,9 @@ systemctl start libvirtd.service openstack-nova-compute.service
 simplecontroller
 #whichserver#
 
+Now it is time to see all works very well:
 #code#
 openstack compute service list
-#code#
-
-#code#
 openstack hypervisor list
 #code#
 
@@ -1073,6 +1067,7 @@ openstack-config --set /etc/neutron/neutron.conf DEFAULT interface_driver openvs
 openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
 #code#
 
+Set the RabbitMQ credentions also which server we will work:
 #code#
 openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
 #code#
@@ -1194,14 +1189,6 @@ openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygr
 
 #code#
 openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver openvswitch
-#code#
-
-#code#
-### test   openstack-config --set /etc/neutron/l3_agent.ini DEFAULT handle_internal_only_routers True
-#code#
-
-#code#
-### test   openstack-config --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
 #code#
 
 #code#
@@ -1359,6 +1346,7 @@ Install the Neutron packges:
 yum install openstack-neutron-openvswitch openstack-neutron-ml2 -y
 #code#
 
+Set the RabbitMQ credentions also which server we will work:
 #code#
 openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
 #code#
@@ -1638,32 +1626,4 @@ openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYS
 #code#
 systemctl restart httpd.service
 #code#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
