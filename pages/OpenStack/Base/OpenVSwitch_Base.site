@@ -1,0 +1,589 @@
+##markdate##
+17/2/2020
+##markdate##
+#title#
+OpenVSwitch Base
+#title#
+
+To do this section is advise finalized or have enviroment equal the section bellow: 
+#intlink#
+OpenStack/Base/Instalation_Base
+#intlink#
+
+
+
+#subtitle#
+Networking service (Neutron)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+First of all, create the Neutron database and set the password to enable the connection on this database with user neutron:
+#code#
+mysql -u root -e "CREATE DATABASE neutron"
+mysql -u root -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'NEUTRON_DBPASS'; flush privileges"
+#code#
+
+#code#
+openstack service create --name neutron --description "OpenStack Networking" network
+#code#
+
+Now create the Neutron service as well add the your endpoints:
+#code#
+openstack endpoint create --region EURegion network public http://simplecontroller:9696
+openstack endpoint create --region EURegion network internal http://simplecontroller:9696
+openstack endpoint create --region EURegion network admin http://simplecontroller:9696
+#code#
+
+
+Create the Neutron user also set the role admin on project service:
+#code#
+openstack user create --domain default --password NEUTRON_PASS neutron
+openstack role add --project service --user neutron admin
+#code#
+
+Install the Neutron packges:
+#code#
+yum install openstack-neutron openstack-neutron-ml2 openstack-neutron-openvswitch -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:NEUTRON_DBPASS@simplecontroller/neutron
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT interface_driver openvswitch
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
+#code#
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+#code#
+
+Determine the OpenStack credentials on the Neutron configuration file:
+#code#
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
+#code#
+
+
+Determine the OpenStack credentials for Nova service on the Neutron configuration file:
+#code#
+openstack-config --set /etc/neutron/neutron.conf nova auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova region_name EURegion
+openstack-config --set /etc/neutron/neutron.conf nova project_name service
+openstack-config --set /etc/neutron/neutron.conf nova username nova
+openstack-config --set /etc/neutron/neutron.conf nova password NOVA_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#code#
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/ml2_conf.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider_br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 8000:80000
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
+#code#
+
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider_br-ex:br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs enable_tunneling True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.7
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge br-int
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent vxlan_udp_port 4789
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_ipset True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver openvswitch
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT force_metadata True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_metadata_network True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dnsmasq_config_file /etc/neutron/dnsmasq-neutron.conf
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT state_path /var/lib/neutron
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_broadcast_reply False
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces True
+#code#
+
+#code#
+openstack-config --set  /etc/neutron/dnsmasq-neutron.conf '' dhcp-option-force 26,1450
+#code#
+
+#code#
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_host simplecontroller 
+#code#
+
+#code#
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+ln -s /etc/neutron/plugins/ml2/ml2_conf.ini /etc/neutron/plugin.ini
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot neutron -e "show tables" 
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=br-ex
+BOOTPROTO=none
+HOTPLUG=no
+EOF
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-br-ex
+NAME=br-ex
+DEVICE=br-ex
+IPADDR=192.168.88.7
+PREFIX=24
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+HOTPLUG=no
+ONBOOT=yes
+GATEWAY=192.168.88.1
+DNS1=192.168.88.1
+EOF
+#code#
+
+#code#
+ifdown eth0 ; ifup eth0
+#code#
+
+
+Enable and start the Neutron Server, OpenVSwitch, OVS Agent, DHCP Agent and MetaData Agent service:
+#code#
+systemctl enable neutron-server.service openvswitch.service \
+  neutron-openvswitch-agent.service neutron-dhcp-agent.service \
+  neutron-metadata-agent.service \
+  neutron-l3-agent.service
+#code#
+
+#code#
+systemctl start neutron-server.service \
+  neutron-openvswitch-agent.service neutron-dhcp-agent.service \
+  neutron-metadata-agent.service \
+  neutron-l3-agent.service
+#code#
+
+#code#
+openstack network agent list
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf neutron url http://simplecontroller:9696
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://simplecontroller:5000
+openstack-config --set /etc/nova/nova.conf neutron auth_type password
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron region_name EURegion
+openstack-config --set /etc/nova/nova.conf neutron project_name service
+openstack-config --set /etc/nova/nova.conf neutron username neutron
+openstack-config --set /etc/nova/nova.conf neutron password NEUTRON_PASS
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy true
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+systemctl restart openstack-nova-api.service
+#code#
+
+
+#code#
+openstack compute service list
+#code#
+
+
+
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+Install the Neutron packges:
+#code#
+yum install openstack-neutron-openvswitch openstack-neutron-ml2 -y
+#code#
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+#code#
+
+Determine the OpenStack credentials on the Neutron configuration file:
+#code#
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#code#
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider_br-ex:br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs enable_tunneling True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.11
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge br-int
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent vxlan_udp_port 4789
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_ipset True
+#code#
+
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=br-ex
+BOOTPROTO=none
+HOTPLUG=no
+EOF
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-br-ex
+NAME=br-ex
+DEVICE=br-ex
+IPADDR=192.168.88.11
+PREFIX=24
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+HOTPLUG=no
+ONBOOT=yes
+GATEWAY=192.168.88.1
+DNS1=192.168.88.1
+EOF
+#code#
+
+#code#
+ifdown eth0 ; ifup eth0
+#code#
+
+
+Enable and start the OpenVSwitch and OVS agent service:
+#code#
+systemctl enable openvswitch.service neutron-openvswitch-agent.service
+#code#
+
+#code#
+systemctl start neutron-openvswitch-agent.service
+#code#
+
+
+#code#
+openstack-config --set /etc/nova/nova.conf neutron url http://simplecontroller:9696
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://simplecontroller:5000
+openstack-config --set /etc/nova/nova.conf neutron auth_type password
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron region_name EURegion
+openstack-config --set /etc/nova/nova.conf neutron project_name service
+openstack-config --set /etc/nova/nova.conf neutron username neutron
+openstack-config --set /etc/nova/nova.conf neutron password NEUTRON_PASS
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy true
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+systemctl restart openstack-nova-compute.service
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+openstack compute service list
+#code#
+
+#code#
+openstack network agent list
+#code#
+
+
+
+#code#
+openstack network create --share --external --provider-physical-network provider_br-ex \
+ --provider-network-type flat ext-net-flat
+#code#
+
+#code#
+openstack subnet create --network ext-net-flat --allocation-pool start=192.168.88.100,end=192.168.88.250 \
+ --dns-nameserver 8.8.8.8 --gateway 192.168.88.1 --subnet-range 192.168.88.0/24 ext-subnet-flat
+#code#
+
+#code#
+openstack flavor create --ram 128 --disk 4 --swap 0 --vcpus 1 --public cirros-flavor
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password \
+ myuser_pass image list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password\
+ myuser_pass flavor list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password \
+ myuser_pass network list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ server create --flavor cirros-flavor --image cirros --nic net-id=ext-net-flat myflatvm1
+#code#
+
+To make our live easy create this file:
+#code#
+cat <<'EOF'> myuser_openrc
+export OS_USERNAME=myuser
+export OS_PASSWORD=myuser_pass
+export OS_PROJECT_NAME=myproject
+export OS_USER_DOMAIN_NAME=mydomain
+export OS_PROJECT_DOMAIN_NAME=mydomain
+export OS_AUTH_URL=http://simplecontroller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_REGION_NAME=EURegion
+export PS1='\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;31m\][\W]($OS_PROJECT_NAME-$OS_REGION_NAME)\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+EOF
+#code#
+
+#code#
+source myuser_openrc
+#code#
+
+#code#
+openstack network create mynet
+#code#
+
+#code#
+openstack subnet create --network mynet --subnet-range 10.8.8.0/24 --allocation-pool start=10.8.8.10,end=10.8.8.200 mysubnet
+#code#
+
+#code#
+openstack router create myrouter
+#code#
+
+#code#
+openstack router add subnet myrouter mysubnet
+#code#
+
+#code#
+openstack router set myrouter --external-gateway ext-net-flat
+#code#
+
+#code#
+openstack server create --flavor cirros-flavor --image "cirros" --nic net-id=mynet myvxlanvm1
+#code#
+
+#code#
+openstack server add volume myvxlanvm1 vol01
+#code#
+
+#code#
+openstack server create --flavor cirros-flavor --volume volimg01 --nic net-id=mynet myvxlanvmFromvol1
+#code#
+
+
