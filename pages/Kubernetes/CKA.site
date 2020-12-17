@@ -2,11 +2,12 @@
 14/12/2020
 ##markdate##
 #title#
-CKA
+Certified Kubernetes Administration - CKA
 #title#
 
+---
 
-Prerequisite
+**Prerequisite**
 #intlink#
 Kubernetes/How_to_install_K8S
 #intlink#
@@ -16,40 +17,40 @@ Imperative Commands
 #whichserver#
 
 Create a pod
-#code#
-kubectl run --generator=run-pod/v1 nginx --image=nginx
-#code#
+
+    kubectl run --generator=run-pod/v1 nginx --image=nginx
+
 
 Generate POD yaml file
-#code#
-kubectl run --generator=run-pod/v1 nginx --image=nginx --dry-run -o yaml > pod-definition.yml
-#code#
+
+    kubectl run --generator=run-pod/v1 nginx --image=nginx --dry-run -o yaml > pod-definition.yml
+
 
 Create Deployment
-#code#
-kubectl create deployment --image=nginx nginx
-#code#
+
+    kubectl create deployment --image=nginx nginx
+
 
 
 Create Deployment with replicas
-#code#
-kubectl create deployment --image=nginx nginx
-kubectl scale deployment/nginx --replicas=4
-#code#
 
-Either, you may want generate the deployment YAML file and than update the replica options
+    kubectl create deployment --image=nginx nginx
+    kubectl scale deployment/nginx --replicas=4
+
+
+> You may want generate the deployment YAML file and than update the replica options either
 
 #whichserver#
 ## Core Concepts
 #whichserver#
 
-TODO
+*TODO*
 
 #whichserver#
 ## Scheduling
 #whichserver#
 
-TODO
+*TODO*
 
 #whichserver#
 ## Logging & Monitoring
