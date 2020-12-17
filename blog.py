@@ -10,6 +10,7 @@ import io
 import os
 import shutil
 import re
+from flask_misaka import Misaka, markdown
 
 WEB_URL = os.environ.get('WEB_URL') or 'http://127.0.0.1:83'
 document_root = os.environ.get('document_root') or '/var/www/html4'
@@ -168,6 +169,7 @@ def Getter_time():
   return sorted( originalorder, key=lambda x: datetime.datetime.strptime(x['date'], '%d/%m/%Y'), reverse=True)
 
 app = Flask('Blog')
+Misaka(app)
 if __name__ == "__main__":
   with app.app_context():
     for pags in treta():
