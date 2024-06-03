@@ -40,7 +40,7 @@
 
 {%- if k == 'line' -%}
 {% for i in v %}
-<div class="text"><p>{{ i }}</p> </div>
+<div class="text"><p>{{ i|markdown }}</p> </div>
 {% endfor %}
 {%- endif -%}
 
