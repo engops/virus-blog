@@ -12,7 +12,7 @@ import shutil
 import re
 
 WEB_URL = os.environ.get('WEB_URL') or 'http://127.0.0.1:83'
-document_root = os.environ.get('document_root') or '/var/www/html4'
+document_root = os.environ.get('document_root') or '../virtus-site'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 pages = os.path.join(basedir, 'pages')
@@ -93,7 +93,6 @@ def Indexer_Time( filename ):
     f.close()
 
 def Indexer_Title( filename ):
-  x = datetime.datetime.now()
   f = io.open(filename,'r', encoding="utf-8")
   temp = f.read()
   f.close()
@@ -128,7 +127,6 @@ def Parser(frompages):
       marker += 1
       if marker == 2:
         pass
-        order=[]
         tupl=foda, each_line
         parsered_array.append(tupl)
         marker = 0
