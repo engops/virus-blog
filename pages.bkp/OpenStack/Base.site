@@ -1,0 +1,1635 @@
+#title#
+Base
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+
+This is a simple how-to to show how install openstack manually using the packages from repository, we will install only two machines, on to be the "controller" (where all services will installed) and other to be the compute-node as well we will have tow networks, the imagem bellow show how will be the environment.
+
+#image#
+OpenStack/screenshot-2.png
+#image#
+
+
+#subtitle#
+All machines!!!
+#subtitle#
+
+first of all configure the name and ips on all machines like the image above.
+
+#code#
+hostnamectl set-hostname simplecontroller.xurupita.nl
+#code#
+
+#code#
+hostnamectl set-hostname simplecompute.xurupita.nl
+#code#
+
+#code#
+hostnamectl set-hostname simpleservices.xurupita.nl
+#code#
+
+
+Disable the SELinux:
+#code#
+sed -e 's/SELINUX=.*/SELINUX=permissive/' /etc/selinux/config -i
+setenforce 0
+#code#
+
+And the FirewallD:
+#code#
+systemctl stop firewalld
+systemctl disable firewalld
+#code#
+
+As well the NetworkManager:
+#code#
+systemctl stop NetworkManager
+systemctl disable NetworkManager
+#code#
+
+#code#
+cat << 'EOF' > /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.88.6    simpleservices.xurupita.nl  simpleservices
+192.168.88.7    simplecontroller.xurupita.nl  simplecontroller
+192.168.88.11    simplecompute.xurupita.nl     simplecompute
+EOF
+#code#
+
+Install the Epel and Openstack repos:
+#code#
+yum install centos-release-openstack-stein epel-release -y
+#code#
+
+
+#subtitle#
+NTP
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+yum install chrony -y
+#code#
+
+Configure to permite the others servers sync the time:
+#code#
+cat <<'EOF'> /etc/chrony.conf
+server 1.centos.pool.ntp.org iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+allow 192.168.88.0/24
+EOF
+#code#
+
+Enable and start the Chronyd service:
+#code#
+systemctl enable chronyd.service
+systemctl start chronyd.service
+#code#
+
+
+Verify if it is working:
+#code#
+chronyc sources 
+#code#
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+#code#
+yum install chrony -y
+#code#
+
+Configure to sync time from simplecontroller:
+#code#
+cat <<'EOF'> /etc/chrony.conf
+server simplecontroller iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+EOF
+#code#
+
+Enable and start the Chronyd service:
+#code#
+systemctl enable chronyd.service
+systemctl start chronyd.service
+#code#
+
+
+Verify if it is working:
+#code#
+chronyc sources 
+#code#
+
+#subtitle#
+SQL DataBase
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+yum install mariadb mariadb-server python2-PyMySQL -y
+#code#
+
+#code#
+cat <<'EOF'> /etc/my.cnf.d/openstack.cnf
+[mysqld]
+bind-address = 0.0.0.0
+default-storage-engine = innodb
+innodb_file_per_table = on
+max_connections = 4096
+collation-server = utf8_general_ci
+character-set-server = utf8
+EOF
+#code#
+
+#code#
+systemctl enable mariadb.service
+systemctl start mariadb.service
+#code#
+
+Test if it is ok:
+#code#
+mysql -u root -e "show databases"
+#code#
+
+#code#
+mysql -u root -e "grant all privileges on *.* to root@'%' identified by 'MDB_PASS' with grant option; flush privileges"
+#code#
+
+#subtitle#
+Message Queue
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+yum install rabbitmq-server -y
+#code#
+
+#code#
+rabbitmq-plugins enable rabbitmq_management
+#code#
+
+#code#
+systemctl enable rabbitmq-server.service
+systemctl start rabbitmq-server.service
+#code#
+
+#code#
+rabbitmqctl add_user openstack RABBIT_PASS
+#code#
+
+#code#
+rabbitmqctl set_user_tags openstack administrator
+#code#
+
+#code#
+rabbitmqctl set_permissions openstack ".*" ".*" ".*"
+#code#
+
+#code#
+curl -i -u openstack:RABBIT_PASS http://192.168.88.7:15672/api/whoami
+#code#
+
+
+#subtitle#
+Memcached
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+yum install memcached python-memcached -y
+#code#
+
+#code#
+sed -e 's/OPTIONS=.*/OPTIONS="-l 0.0.0.0"/'  /etc/sysconfig/memcached -i
+#code#
+
+#code#
+systemctl enable memcached.service
+systemctl start memcached.service
+#code#
+
+#code#
+memcached-tool 192.168.88.7:11211 stats
+#code#
+
+
+#subtitle#
+Identity service (Keystone)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+mysql -u root -e "CREATE DATABASE keystone"
+mysql -u root -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY 'KEYSTONE_DBPASS' ; flush privileges"
+#code#
+
+#code#
+yum install openstack-utils -y
+#code#
+
+#code#
+yum install openstack-keystone httpd mod_wsgi -y
+#code#
+
+#code#
+openstack-config --set /etc/keystone/keystone.conf database connection mysql+pymysql://keystone:KEYSTONE_DBPASS@simplecontroller/keystone 
+#code#
+
+#code#
+openstack-config --set /etc/keystone/keystone.conf token provider fernet 
+#code#
+
+#code#
+openstack-config --set /etc/keystone/keystone.conf cache backend dogpile.cache.memcached 
+#code#
+
+#code#
+openstack-config --set /etc/keystone/keystone.conf cache memcache_servers simplecontroller:11211
+#code#
+
+
+#code#
+su -s /bin/sh -c "keystone-manage db_sync" keystone
+#code#
+
+#code#
+mysql -uroot keystone -e "show tables" 
+#code#
+
+#code#
+keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+#code#
+
+#code#
+keystone-manage --config-file /etc/keystone/keystone.conf bootstrap \
+ --bootstrap-password ADMIN_PASS \
+ --bootstrap-admin-url http://simplecontroller:5000/v3/ \
+ --bootstrap-internal-url http://simplecontroller:5000/v3/ \
+ --bootstrap-public-url http://simplecontroller:5000/v3/ \
+ --bootstrap-region-id EURegion
+#code#
+
+#code#
+ln -s /usr/share/keystone/wsgi-keystone.conf /etc/httpd/conf.d/
+#code#
+
+#code#
+systemctl enable httpd.service
+systemctl start httpd.service
+#code#
+
+#code#
+yum install python-openstackclient -y
+#code#
+
+Check if it is everthing ok:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+  --os-project-domain-name Default --os-user-domain-name Default \
+  --os-project-name admin --os-username admin --os-password ADMIN_PASS token issue
+#code#
+
+
+#code#
+cat <<'EOF'> admin_openrc
+export OS_USERNAME=admin
+export OS_PASSWORD=ADMIN_PASS
+export OS_PROJECT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_AUTH_URL=http://simplecontroller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_REGION_NAME=EURegion
+export PS1='\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;31m\][\W]($OS_PROJECT_NAME-$OS_REGION_NAME)\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+EOF
+#code#
+
+#code#
+source admin_openrc
+#code#
+
+#code#
+openstack project create --domain default --description "Service Project" service
+#code#
+
+#code#
+openstack user list
+#code#
+
+#code#
+openstack complete --shell bash | tee /etc/bash_completion.d/os.bash
+#code#
+
+#code#
+source /etc/bash_completion.d/os.bash
+#code#
+
+#code#
+openstack domain create --description "An Example Domain" mydomain
+#code#
+
+#code#
+openstack project create --domain mydomain --description "Demo Project" myproject
+#code#
+
+#code#
+openstack user create --domain mydomain --password myuser_pass myuser
+#code#
+
+#code#
+openstack role add --project myproject --project-domain mydomain --user myuser --user-domain mydomain member
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+  --os-project-domain-name mydomain --os-user-domain-name mydomain \
+  --os-project-name myproject --os-username myuser --os-password myuser_pass token issue
+#code#
+
+
+
+#subtitle#
+Image service (Glance)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+mysql -u root -e "CREATE DATABASE glance"
+mysql -u root -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY 'GLANCE_DBPASS' ; flush privileges"
+#code#
+
+#code#
+source admin_openrc
+#code#
+
+#code#
+openstack user create --domain default --password GLANCE_PASS glance
+#code#
+
+#code#
+openstack role add --project service --user glance admin
+#code#
+
+#code#
+openstack service create --name glance --description "OpenStack Image" image
+#code#
+
+#code#
+openstack endpoint create --region EURegion image public http://simplecontroller:9292
+#code#
+
+#code#
+openstack endpoint create --region EURegion image internal http://simplecontroller:9292
+#code#
+
+#code#
+openstack endpoint create --region EURegion image admin http://simplecontroller:9292
+#code#
+
+#code#
+yum install openstack-glance wget -y
+#code#
+
+#code#
+openstack-config --set /etc/glance/glance-api.conf database connection mysql+pymysql://glance:GLANCE_DBPASS@simplecontroller/glance 
+#code#
+
+#code#
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken auth_type password
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken project_name service
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken username glance
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken password GLANCE_PASS
+#code#
+
+#code#
+su -s /bin/sh -c "glance-manage db_sync" glance
+#code#
+
+#code#
+mysql -uroot glance -e "show tables"
+#code#
+
+#code#
+systemctl enable openstack-glance-api.service 
+systemctl start openstack-glance-api.service
+#code#
+
+#code#
+wget http://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img
+#code#
+
+#code#
+openstack image create "cirros" \
+  --file cirros-0.4.0-x86_64-disk.img \
+  --disk-format qcow2 --container-format bare
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass image list
+#code#
+
+#code#
+ls -l /var/lib/glance/images/
+#code#
+
+
+#subtitle#
+Volume service (Cinder)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+mysql -u root -e "CREATE DATABASE cinder"
+mysql -u root -e "GRANT ALL PRIVILEGES ON cinder.* TO 'cinder'@'%' IDENTIFIED BY 'CINDER_DBPASS' ; flush privileges"
+#code#
+
+#code#
+source admin_openrc
+#code#
+
+#code#
+openstack user create --domain default --password CINDER_PASS cinder
+#code#
+
+#code#
+openstack role add --project service --user cinder admin
+#code#
+
+#code#
+openstack service create --name cinderv2 --description "OpenStack Block Storage" volumev2
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev2 public http://simplecontroller:8776/v2/%\(project_id\)s
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev2 internal http://simplecontroller:8776/v2/%\(project_id\)s
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev2 admin http://simplecontroller:8776/v2/%\(project_id\)s
+#code#
+
+#code#
+openstack service create --name cinderv3 --description "OpenStack Block Storage" volumev3
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev3 public http://simplecontroller:8776/v3/%\(project_id\)s
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev3 internal http://simplecontroller:8776/v3/%\(project_id\)s
+#code#
+
+#code#
+openstack endpoint create --region EURegion volumev3 admin http://simplecontroller:8776/v3/%\(project_id\)s
+#code#
+
+#code#
+yum install openstack-cinder -y
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf database connection mysql+pymysql://cinder:CINDER_DBPASS@simplecontroller/cinder 
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_type password
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_name service
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinder
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password CINDER_PASS
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
+#code#
+
+#code#
+su -s /bin/sh -c "cinder-manage db sync" cinder
+#code#
+
+#code#
+systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
+systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
+#code#
+
+#code#
+openstack volume service list
+#code#
+
+
+#whichserver#
+simpleservices
+#whichserver#
+
+#code#
+yum install nfs-utils -y
+#code#
+
+#code#
+mkdir /mnt/vol01
+#code#
+
+#code#
+echo '/mnt/vol01 *(rw,no_root_squash)' > /etc/exports
+#code#
+
+#code#
+systemctl enable nfs-server
+#code#
+
+#code#
+showmount -e
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+
+#code#
+yum install nfs-utils -y
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends nfs
+#code#
+
+#code#
+echo "simpleservices.xurupita.nl:/mnt/vol01" > /etc/cinder/shares.conf
+#code#
+
+#code#
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_shares_config /etc/cinder/shares.conf
+openstack-config --set /etc/cinder/cinder.conf nfs volume_driver cinder.volume.drivers.nfs.NfsDriver
+openstack-config --set /etc/cinder/cinder.conf nfs volume_backend_name nfsbackend
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_mount_options
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_sparsed_volumes True
+#code#
+
+#code#
+systemctl enable openstack-cinder-volume
+systemctl restart openstack-cinder-api openstack-cinder-scheduler openstack-cinder-volume
+#code#
+
+is possible to see the mount of the NFS
+#code#
+mount
+#code#
+
+#code#
+openstack volume type create NFS
+openstack volume type set NFS --property volume_backend_name=nfsbackend
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+#code#
+
+
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+
+#code#
+openstack volume type list --long
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ volume create --type NFS --size 2 vol01
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ volume create --type NFS --image cirros --size 2 volimg01
+#code#
+
+#code#
+ls -R /var/lib/cinder/mnt/
+#code#
+
+
+
+#subtitle#
+Placement service (Placement)
+#subtitle#
+
+#code#
+mysql -u root -e "CREATE DATABASE placement"
+#code#
+
+#code#
+mysql -u root -e "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY 'PLACEMENT_DBPASS'; flush privileges"
+#code#
+
+#code#
+openstack service create --name placement --description "Placement API" placement
+#code#
+
+#code#
+openstack endpoint create --region EURegion placement public http://simplecontroller:8778
+openstack endpoint create --region EURegion placement internal http://simplecontroller:8778
+openstack endpoint create --region EURegion placement admin http://simplecontroller:8778
+#code#
+
+#code#
+openstack user create --domain default --password PLACEMENT_PASS placement
+#code#
+
+#code#
+openstack role add --project service --user placement admin
+#code#
+
+#code#
+yum install openstack-placement-api -y
+#code#
+
+#code#
+openstack-config --set /etc/placement/placement.conf placement_database connection mysql+pymysql://placement:PLACEMENT_DBPASS@simplecontroller/placement
+#code#
+
+#code#
+openstack-config --set /etc/placement/placement.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/placement/placement.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/placement/placement.conf keystone_authtoken auth_type password
+openstack-config --set /etc/placement/placement.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/placement/placement.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/placement/placement.conf keystone_authtoken project_name service
+openstack-config --set /etc/placement/placement.conf keystone_authtoken username placement
+openstack-config --set /etc/placement/placement.conf keystone_authtoken password PLACEMENT_PASS
+#code#
+
+#code#
+su -s /bin/sh -c "placement-manage db sync" placement
+#code#
+
+#code#
+mysql -uroot placement -e "show tables"
+#code#
+
+#code#
+cat <<'EOF'>> /etc/httpd/conf.d/00-placement-api.conf
+<Directory /usr/bin>
+    <IfVersion >= 2.4>
+        Require all granted
+    </IfVersion>
+    <IfVersion < 2.4>
+        Order allow,deny
+        Allow from all
+    </IfVersion>
+</Directory>
+EOF
+#code#
+
+#code#
+systemctl restart httpd
+#code#
+
+#code#
+yum install python-osc-placement -y
+#code#
+
+#code#
+openstack resource provider list
+#code#
+
+#subtitle#
+Compute service (Nova)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+mysql -u root -e "CREATE DATABASE nova_api"
+mysql -u root -e "CREATE DATABASE nova"
+mysql -u root -e "CREATE DATABASE nova_cell0"
+#code#
+
+#code#
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova_api.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges" 
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges"
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges"
+#code#
+
+#code#
+openstack service create --name nova --description "OpenStack Compute" compute
+#code#
+
+#code#
+openstack endpoint create --region EURegion compute public http://simplecontroller:8774/v2.1
+openstack endpoint create --region EURegion compute internal http://simplecontroller:8774/v2.1
+openstack endpoint create --region EURegion compute admin http://simplecontroller:8774/v2.1
+#code#
+
+#code#
+openstack user create --domain default --password NOVA_PASS nova
+#code#
+
+#code#
+openstack role add --project service --user nova admin
+#code#
+
+#code#
+yum install openstack-nova-api openstack-nova-conductor openstack-nova-novncproxy openstack-nova-scheduler -y
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf api_database connection mysql+pymysql://nova:NOVA_DBPASS@simplecontroller/nova_api
+openstack-config --set /etc/nova/nova.conf database connection mysql+pymysql://nova:NOVA_DBPASS@simplecontroller/nova
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_type password
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_name service
+openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
+openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.7
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address \$my_ip
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf cinder os_region_name EURegion
+#code#
+
+
+#code#
+openstack-config --set /etc/nova/nova.conf placement region_name EURegion
+openstack-config --set /etc/nova/nova.conf placement project_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement project_name service
+openstack-config --set /etc/nova/nova.conf placement auth_type password
+openstack-config --set /etc/nova/nova.conf placement user_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf placement username placement
+openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf scheduler discover_hosts_in_cells_interval 300
+#code#
+
+#code#
+su -s /bin/sh -c "nova-manage api_db sync" nova
+#code#
+
+#code#
+mysql -uroot nova_api -e "show tables"
+#code#
+
+#code#
+su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
+#code#
+
+#code#
+mysql -uroot nova_cell0 -e "show tables"
+#code#
+
+#code#
+su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
+#code#
+
+#code#
+su -s /bin/sh -c "nova-manage db sync" nova
+#code#
+
+#code#
+mysql -uroot nova -e "show tables"
+#code#
+
+#code#
+su -s /bin/sh -c "nova-manage cell_v2 list_cells" nova
+#code#
+
+#code#
+systemctl enable openstack-nova-api.service openstack-nova-scheduler.service \
+ openstack-nova-conductor.service openstack-nova-novncproxy.service
+systemctl start openstack-nova-api.service openstack-nova-scheduler.service \
+ openstack-nova-conductor.service openstack-nova-novncproxy.service
+#code#
+
+#code#
+openstack compute service list
+#code#
+
+
+
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+#code#
+yum install openstack-utils -y
+#code#
+
+#code#
+yum install openstack-nova-compute -y   
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_type password
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_name service
+openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
+openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 192.168.88.11
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf placement region_name EURegion
+openstack-config --set /etc/nova/nova.conf placement project_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement project_name service
+openstack-config --set /etc/nova/nova.conf placement auth_type password
+openstack-config --set /etc/nova/nova.conf placement user_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf placement username placement
+openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf vnc enabled true
+openstack-config --set /etc/nova/nova.conf vnc server_listen 0.0.0.0
+openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address \$my_ip
+openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://simplecontroller:6080/vnc_auto.html
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
+#code#
+
+#code#
+if egrep -q '(vmx|svm)' /proc/cpuinfo
+  then 
+  openstack-config --set /etc/nova/nova.conf libvirt virt_type kvm
+else
+  openstack-config --set /etc/nova/nova.conf libvirt virt_type qemu
+fi
+#code#
+
+#code#
+systemctl enable libvirtd.service openstack-nova-compute.service
+systemctl start libvirtd.service openstack-nova-compute.service
+#code#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+openstack compute service list
+#code#
+
+#code#
+openstack hypervisor list
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#subtitle#
+Networking service (Neutron)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+mysql -u root -e "CREATE DATABASE neutron"
+mysql -u root -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'NEUTRON_DBPASS'; flush privileges"
+#code#
+
+#code#
+openstack service create --name neutron --description "OpenStack Networking" network
+#code#
+
+#code#
+openstack endpoint create --region EURegion network public http://simplecontroller:9696
+openstack endpoint create --region EURegion network internal http://simplecontroller:9696
+openstack endpoint create --region EURegion network admin http://simplecontroller:9696
+#code#
+
+
+#code#
+openstack user create --domain default --password NEUTRON_PASS neutron
+#code#
+
+#code#
+openstack role add --project service --user neutron admin
+#code#
+
+#code#
+yum install openstack-neutron openstack-neutron-ml2 openstack-neutron-openvswitch -y
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:NEUTRON_DBPASS@simplecontroller/neutron
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT interface_driver openvswitch
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf nova auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova region_name EURegion
+openstack-config --set /etc/neutron/neutron.conf nova project_name service
+openstack-config --set /etc/neutron/neutron.conf nova username nova
+openstack-config --set /etc/neutron/neutron.conf nova password NOVA_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#code#
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/ml2_conf.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider_br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 8000:80000
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
+#code#
+
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider_br-ex:br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs enable_tunneling True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.7
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge br-int
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent vxlan_udp_port 4789
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_ipset True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver openvswitch
+#code#
+
+#code#
+### test   openstack-config --set /etc/neutron/l3_agent.ini DEFAULT handle_internal_only_routers True
+#code#
+
+#code#
+### test   openstack-config --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT force_metadata True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_metadata_network True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dnsmasq_config_file /etc/neutron/dnsmasq-neutron.conf
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT state_path /var/lib/neutron
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_broadcast_reply False
+#code#
+
+#code#
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces True
+#code#
+
+#code#
+openstack-config --set  /etc/neutron/dnsmasq-neutron.conf '' dhcp-option-force 26,1450
+#code#
+
+#code#
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_host simplecontroller 
+#code#
+
+#code#
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+ln -s /etc/neutron/plugins/ml2/ml2_conf.ini /etc/neutron/plugin.ini
+#code#
+
+#code#
+su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+#code#
+
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=br-ex
+BOOTPROTO=none
+HOTPLUG=no
+EOF
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-br-ex
+NAME=br-ex
+DEVICE=br-ex
+IPADDR=192.168.88.7
+PREFIX=24
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+HOTPLUG=no
+ONBOOT=yes
+GATEWAY=192.168.88.1
+DNS1=192.168.88.1
+EOF
+#code#
+
+#code#
+ifdown eth0 ; ifup eth0
+#code#
+
+#code#
+systemctl enable neutron-server.service openvswitch.service \
+  neutron-openvswitch-agent.service neutron-dhcp-agent.service \
+  neutron-metadata-agent.service \
+  neutron-l3-agent.service
+#code#
+
+#code#
+systemctl start neutron-server.service \
+  neutron-openvswitch-agent.service neutron-dhcp-agent.service \
+  neutron-metadata-agent.service \
+  neutron-l3-agent.service
+#code#
+
+#code#
+openstack network agent list
+#code#
+
+#code#
+openstack-config --set /etc/nova/nova.conf neutron url http://simplecontroller:9696
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://simplecontroller:5000
+openstack-config --set /etc/nova/nova.conf neutron auth_type password
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron region_name EURegion
+openstack-config --set /etc/nova/nova.conf neutron project_name service
+openstack-config --set /etc/nova/nova.conf neutron username neutron
+openstack-config --set /etc/nova/nova.conf neutron password NEUTRON_PASS
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy true
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+systemctl restart openstack-nova-api.service
+#code#
+
+
+#code#
+openstack compute service list
+#code#
+
+
+
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+#code#
+yum install openstack-neutron-openvswitch openstack-neutron-ml2 -y
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password NEUTRON_PASS
+#code#
+
+#code#
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#code#
+
+#code#
+openstack-config --del /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider_br-ex:br-ex
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs enable_tunneling True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip 192.168.88.11
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge br-int
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent vxlan_udp_port 4789
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group True
+#code#
+
+#code#
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_ipset True
+#code#
+
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=br-ex
+BOOTPROTO=none
+HOTPLUG=no
+EOF
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-br-ex
+NAME=br-ex
+DEVICE=br-ex
+IPADDR=192.168.88.11
+PREFIX=24
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+HOTPLUG=no
+ONBOOT=yes
+GATEWAY=192.168.88.1
+DNS1=192.168.88.1
+EOF
+#code#
+
+#code#
+ifdown eth0 ; ifup eth0
+#code#
+
+#code#
+systemctl enable openvswitch.service neutron-openvswitch-agent.service
+#code#
+
+#code#
+systemctl start neutron-openvswitch-agent.service
+#code#
+
+
+#code#
+openstack-config --set /etc/nova/nova.conf neutron url http://simplecontroller:9696
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://simplecontroller:5000
+openstack-config --set /etc/nova/nova.conf neutron auth_type password
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default
+openstack-config --set /etc/nova/nova.conf neutron region_name EURegion
+openstack-config --set /etc/nova/nova.conf neutron project_name service
+openstack-config --set /etc/nova/nova.conf neutron username neutron
+openstack-config --set /etc/nova/nova.conf neutron password NEUTRON_PASS
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy true
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret METADATA_SECRET
+#code#
+
+#code#
+systemctl restart openstack-nova-compute.service
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+openstack compute service list
+#code#
+
+#code#
+openstack network agent list
+#code#
+
+
+
+#code#
+openstack network create --share --external --provider-physical-network provider_br-ex \
+ --provider-network-type flat ext-net-flat
+#code#
+
+#code#
+openstack subnet create --network ext-net-flat --allocation-pool start=192.168.88.100,end=192.168.88.250 \
+ --dns-nameserver 8.8.8.8 --gateway 192.168.88.1 --subnet-range 192.168.88.0/24 ext-subnet-flat
+#code#
+
+#code#
+openstack flavor create --ram 128 --disk 4 --swap 0 --vcpus 1 --public cirros-flavor
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password \
+ myuser_pass image list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password\
+ myuser_pass flavor list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password \
+ myuser_pass network list
+#code#
+
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ server create --flavor cirros-flavor --image cirros --nic net-id=ext-net-flat myflatvm1
+#code#
+
+To make our live easy create this file:
+#code#
+cat <<'EOF'> myuser_openrc
+export OS_USERNAME=myuser
+export OS_PASSWORD=myuser_pass
+export OS_PROJECT_NAME=myproject
+export OS_USER_DOMAIN_NAME=mydomain
+export OS_PROJECT_DOMAIN_NAME=mydomain
+export OS_AUTH_URL=http://simplecontroller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_REGION_NAME=EURegion
+export PS1='\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;31m\][\W]($OS_PROJECT_NAME-$OS_REGION_NAME)\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+EOF
+#code#
+
+#code#
+source myuser_openrc
+#code#
+
+#code#
+openstack network create mynet
+#code#
+
+#code#
+openstack subnet create --network mynet --subnet-range 10.8.8.0/24 --allocation-pool start=10.8.8.10,end=10.8.8.200 mysubnet
+#code#
+
+#code#
+openstack router create myrouter
+#code#
+
+#code#
+openstack router add subnet myrouter mysubnet
+#code#
+
+#code#
+openstack router set myrouter --external-gateway ext-net-flat
+#code#
+
+#code#
+openstack server create --flavor cirros-flavor --image "cirros" --nic net-id=mynet myvxlanvm1
+#code#
+
+#code#
+openstack server add volume myvxlanvm1 vol01
+#code#
+
+#code#
+openstack server create --flavor cirros-flavor --volume volimg01 --nic net-id=mynet myvxlanvmFromvol1
+#code#
+
+
+#subtitle#
+Dashboard (Horizon)
+#subtitle#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+yum install openstack-dashboard -y
+#code#
+
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_HOST '"simplecontroller"'
+#code#
+
+#code#
+sed -e 's/ALLOWED_HOSTS.*/ALLOWED_HOSTS = ["*"]/' /etc/openstack-dashboard/local_settings -i
+#code#
+
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' SESSION_ENGINE "'django.contrib.sessions.backends.cache'"
+#code#
+
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' CACHES "{'default': {'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache','LOCATION': 'simplecontroller:11211',}}"
+#code#
+
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT True
+#code#
+
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_DEFAULT_ROLE '"member"'
+#code#
+
+#code#
+systemctl restart httpd.service
+#code#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

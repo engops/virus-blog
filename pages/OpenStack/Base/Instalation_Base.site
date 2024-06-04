@@ -1,0 +1,1079 @@
+##markdate##
+5/2/2020
+##markdate##
+#title#
+Manual basic instalation (Simple OpenStack)
+#title#
+
+
+
+This is a simple how-to to show how install openstack manually using the packages from repository, we will install only two machines as OpenStack components and the third will be to adictional services, on to be the "simplecontroller" (where all services will installed) and other to be the compute-node as well we will have only one network, the imagem bellow show how will be the environment.
+
+#image#
+OpenStack/environment.png
+#image#
+
+
+first of all configure the name and ips on all machines like the commands bellow.
+
+#whichserver#
+simpleservices
+#whichserver#
+#code#
+hostnamectl set-hostname simpleservices.xurupita.nl
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.6
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+#code#
+hostnamectl set-hostname simplecontroller.xurupita.nl
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.7
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
+#code#
+
+#whichserver#
+simplecompute
+#whichserver#
+#code#
+hostnamectl set-hostname simplecompute.xurupita.nl
+#code#
+
+#code#
+cat <<'EOF'> /etc/sysconfig/network-scripts/ifcfg-eth0 
+IPADDR=192.168.88.11
+TYPE=Ethernet
+BOOTPROTO=static
+DEFROUTE=yes
+NAME=eth0
+DEVICE=eth0
+ONBOOT=yes
+PREFIX=24
+GATEWAY=192.168.88.1
+DNS1=8.8.8.8
+EOF
+#code#
+
+
+#whichserver#
+All machines!!!
+#whichserver#
+
+Disable the SELinux:
+#code#
+sed -e 's/SELINUX=.*/SELINUX=permissive/' /etc/selinux/config -i
+setenforce 0
+#code#
+
+And the FirewallD:
+#code#
+systemctl stop firewalld
+systemctl disable firewalld
+#code#
+
+As well the NetworkManager:
+#code#
+systemctl stop NetworkManager
+systemctl disable NetworkManager
+#code#
+
+Because we are not using some DNS as authoritative of xurupita.nl add to '/etc/hosts' these lines:
+#code#
+cat << 'EOF' > /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.88.6    simpleservices.xurupita.nl  simpleservices
+192.168.88.7    simplecontroller.xurupita.nl  simplecontroller
+192.168.88.11    simplecompute.xurupita.nl     simplecompute
+EOF
+#code#
+
+Install the Epel and Openstack repos:
+#code#
+yum install centos-release-openstack-stein epel-release -y
+#code#
+
+This package will install the 'openstack-config' command that is just a wrapper to the command 'crudinni':
+#code#
+yum install openstack-utils -y
+#code#
+
+
+#subtitle#
+NTP
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+#code#
+yum install chrony -y
+#code#
+
+Configure to permite the others servers sync the time:
+#code#
+cat <<'EOF'> /etc/chrony.conf
+server 1.centos.pool.ntp.org iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+allow 192.168.88.0/24
+EOF
+#code#
+
+Enable and start the Chronyd service:
+#code#
+systemctl enable chronyd.service
+systemctl start chronyd.service
+#code#
+
+
+Verify if it is working:
+#code#
+chronyc sources 
+#code#
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+#code#
+yum install chrony -y
+#code#
+
+Configure to sync time from simplecontroller:
+#code#
+cat <<'EOF'> /etc/chrony.conf
+server simplecontroller iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+EOF
+#code#
+
+Enable and start the Chronyd service:
+#code#
+systemctl enable chronyd.service
+systemctl start chronyd.service
+#code#
+
+
+Verify if it is working:
+#code#
+chronyc sources 
+#code#
+
+#subtitle#
+SQL DataBase
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the MariaDB service and the python connector:
+#code#
+yum install mariadb mariadb-server python2-PyMySQL -y
+#code#
+
+Configure the '/etc/my.cnf.d/openstack.cnf' to ensure that MySQL will work InnoDB and UTF also set to be open the port 3306 on all ips that we'll have:
+#code#
+cat <<'EOF'> /etc/my.cnf.d/openstack.cnf
+[mysqld]
+bind-address = 0.0.0.0
+default-storage-engine = innodb
+innodb_file_per_table = on
+max_connections = 4096
+collation-server = utf8_general_ci
+character-set-server = utf8
+EOF
+#code#
+
+Enable and start the MariaDB service:
+#code#
+systemctl enable mariadb.service
+systemctl start mariadb.service
+#code#
+
+Test if it is ok:
+#code#
+mysql -u root -e "show databases"
+#code#
+
+Set a passowrd to root user (root only on MariaDB will have this password) be able to connect remotly if necessary:
+#code#
+mysql -u root -e "grant all privileges on *.* to root@'%' identified by 'MDB_PASS' with grant option; flush privileges"
+#code#
+
+
+#subtitle#
+Message Queue
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the RabbitMQ service to provide the message system:
+#code#
+yum install rabbitmq-server -y
+#code#
+
+Enable the managment portal, it will expose many informations on web console, the default port is 15672, in our case try http://192.168.88.7:15672 after create the user and set the permission on next steps:
+#code#
+rabbitmq-plugins enable rabbitmq_management
+#code#
+
+
+Enable and start the RabbitMQ Server service:
+#code#
+systemctl enable rabbitmq-server.service
+systemctl start rabbitmq-server.service
+#code#
+
+Create, set password and set permission of the 'openstack' user, this user will be used to connect each OpenStack service on RabbitMQ:
+#code#
+rabbitmqctl add_user openstack RABBIT_PASS
+rabbitmqctl set_user_tags openstack administrator
+rabbitmqctl set_permissions openstack ".*" ".*" ".*"
+#code#
+
+Chech if all is correctly configured:
+#code#
+curl -i -u openstack:RABBIT_PASS http://192.168.88.7:15672/api/whoami
+#code#
+
+
+#subtitle#
+Memcached
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the Memcached and the python library to enable openstack uses memcached:
+#code#
+yum install memcached python-memcached -y
+#code#
+
+Determine that memcached service will listen on all interfaces:
+#code#
+sed -e 's/OPTIONS=.*/OPTIONS="-l 0.0.0.0"/'  /etc/sysconfig/memcached -i
+#code#
+
+Enable and start the Memcached service:
+#code#
+systemctl enable memcached.service
+systemctl start memcached.service
+#code#
+
+Chech if the Memcached is correctly configured:
+#code#
+memcached-tool 192.168.88.7:11211 stats
+#code#
+
+
+#subtitle#
+Identity service (Keystone)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+First of all, create the Keystone database and set the password to enable the connection on this database with user keystone:
+#code#
+mysql -u root -e "CREATE DATABASE keystone"
+mysql -u root -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY 'KEYSTONE_DBPASS' ; flush privileges"
+#code#
+
+Install the Keystone packages, the apache server and the wsgi that is used to be like a gateway interface for the keytone api service:
+#code#
+yum install openstack-keystone httpd mod_wsgi -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/keystone/keystone.conf database connection mysql+pymysql://keystone:KEYSTONE_DBPASS@simplecontroller/keystone 
+#code#
+
+Determine which token mechanism Keytone will use:
+#code#
+openstack-config --set /etc/keystone/keystone.conf token provider fernet 
+#code#
+
+Set Keytone to work with Memcached also set which server will be:
+#code#
+openstack-config --set /etc/keystone/keystone.conf cache backend dogpile.cache.memcached 
+openstack-config --set /etc/keystone/keystone.conf cache memcache_servers simplecontroller:11211
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "keystone-manage db_sync" keystone
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot keystone -e "show tables" 
+#code#
+
+To user Fernet is necessary to generate the hashs that will be used to genetate the tokens, so run the command bellow:
+#code#
+keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+#code#
+
+This command will create the service identity and the address endpoints of Identity service (Keystone), as well will create the Domain Default, the Project admin and the User admin with the especified password and if you specify will create the Region, as bellow.
+#code#
+keystone-manage --config-file /etc/keystone/keystone.conf bootstrap \
+ --bootstrap-password ADMIN_PASS \
+ --bootstrap-admin-url http://simplecontroller:5000/v3/ \
+ --bootstrap-internal-url http://simplecontroller:5000/v3/ \
+ --bootstrap-public-url http://simplecontroller:5000/v3/ \
+ --bootstrap-region-id EURegion
+#code#
+
+Because the keystone package dont create the Apache Virtual-Host for Keystone WSGI, create this link:
+#code#
+ln -s /usr/share/keystone/wsgi-keystone.conf /etc/httpd/conf.d/
+#code#
+
+
+Enable and start the Apache service:
+#code#
+systemctl enable httpd.service
+systemctl start httpd.service
+#code#
+
+Install the client, to manage the OpenStack and your services by CLI:
+#code#
+yum install python-openstackclient python-osc-placement -y
+#code#
+
+Check if it is everthing ok:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+  --os-project-domain-name Default --os-user-domain-name Default \
+  --os-project-name admin --os-username admin --os-password ADMIN_PASS token issue
+#code#
+
+Instead to pass on command line all information that you need, is possible to add to a file like bellow:
+#code#
+cat <<'EOF'> admin_openrc
+export OS_USERNAME=admin
+export OS_PASSWORD=ADMIN_PASS
+export OS_PROJECT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_AUTH_URL=http://simplecontroller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_REGION_NAME=EURegion
+export PS1='\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;31m\][\W]($OS_PROJECT_NAME-$OS_REGION_NAME)\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+EOF
+#code#
+
+upload this file to memory:
+#code#
+source admin_openrc
+#code#
+
+Now you are able to execute any comando whit this credential, so create the service project that will be used by all other OpenStack services:
+#code#
+openstack project create --domain default --description "Service Project" service
+#code#
+
+Just a tip for you!!!
+#code#
+openstack complete --shell bash | tee /etc/bash_completion.d/os.bash
+source /etc/bash_completion.d/os.bash
+#code#
+
+To test many resources, create the Domain, Project, User and set the role for this new user.
+#code#
+openstack domain create --description "An Example Domain" mydomain
+openstack project create --domain mydomain --description "Demo Project" myproject
+openstack user create --domain mydomain --password myuser_pass myuser
+openstack role add --project myproject --project-domain mydomain --user myuser --user-domain mydomain member
+#code#
+
+Check if it is everthing ok:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+  --os-project-domain-name mydomain --os-user-domain-name mydomain \
+  --os-project-name myproject --os-username myuser --os-password myuser_pass token issue
+#code#
+
+
+
+#subtitle#
+Image service (Glance)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+First of all, create the Glance database and set the password to enable the connection on this database with user glance:
+#code#
+mysql -u root -e "CREATE DATABASE glance"
+mysql -u root -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY 'GLANCE_DBPASS' ; flush privileges"
+#code#
+
+Create the Glance user also set the role admin on project service:
+#code#
+openstack user create --domain default --password GLANCE_PASS glance
+openstack role add --project service --user glance admin
+#code#
+
+Now create the Glance service as well add the your endpoints:
+#code#
+openstack service create --name glance --description "OpenStack Image" image
+openstack endpoint create --region EURegion image public http://simplecontroller:9292
+openstack endpoint create --region EURegion image internal http://simplecontroller:9292
+openstack endpoint create --region EURegion image admin http://simplecontroller:9292
+#code#
+
+Install the Glance packge also wget that will be used to download the images:
+#code#
+yum install openstack-glance wget -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/glance/glance-api.conf database connection mysql+pymysql://glance:GLANCE_DBPASS@simplecontroller/glance 
+#code#
+
+Determine the OpenStack credentials on the Glance configuration file:
+#code#
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken auth_type password
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken project_name service
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken username glance
+openstack-config --set /etc/glance/glance-api.conf keystone_authtoken password GLANCE_PASS
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "glance-manage db_sync" glance
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot glance -e "show tables"
+#code#
+
+Enable and start the Glance API service:
+#code#
+systemctl enable openstack-glance-api.service 
+systemctl start openstack-glance-api.service
+#code#
+
+Download the Cirros image file from internet:
+#code#
+wget http://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img
+#code#
+
+Create on OpenStack a new image called "cirros", the disk format must be QCOW2 and the container format Bare:
+#code#
+openstack image create "cirros" \
+  --file cirros-0.4.0-x86_64-disk.img \
+  --disk-format qcow2 --container-format bare
+#code#
+
+Check if this command works propearly:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass image list
+#code#
+
+Also check if exist a new file on the path bellow:
+#code#
+ls -l /var/lib/glance/images/
+#code#
+
+
+#subtitle#
+Volume service (Cinder)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+First of all, create the Cinder database and set the password to enable the connection on this database with user cinder:
+#code#
+mysql -u root -e "CREATE DATABASE cinder"
+mysql -u root -e "GRANT ALL PRIVILEGES ON cinder.* TO 'cinder'@'%' IDENTIFIED BY 'CINDER_DBPASS' ; flush privileges"
+#code#
+
+
+Create the Cinder user also set the role admin on project service:
+#code#
+openstack user create --domain default --password CINDER_PASS cinder
+openstack role add --project service --user cinder admin
+#code#
+
+Now create the Cinder V2 service as well add the your endpoints:
+#code#
+openstack service create --name cinderv2 --description "OpenStack Block Storage" volumev2
+openstack endpoint create --region EURegion volumev2 public http://simplecontroller:8776/v2/%\(project_id\)s
+openstack endpoint create --region EURegion volumev2 internal http://simplecontroller:8776/v2/%\(project_id\)s
+openstack endpoint create --region EURegion volumev2 admin http://simplecontroller:8776/v2/%\(project_id\)s
+#code#
+
+And create the Cinder V3 service as well add the your endpoints:
+#code#
+openstack service create --name cinderv3 --description "OpenStack Block Storage" volumev3
+openstack endpoint create --region EURegion volumev3 public http://simplecontroller:8776/v3/%\(project_id\)s
+openstack endpoint create --region EURegion volumev3 internal http://simplecontroller:8776/v3/%\(project_id\)s
+openstack endpoint create --region EURegion volumev3 admin http://simplecontroller:8776/v3/%\(project_id\)s
+#code#
+
+Install the Cinder packge:
+#code#
+yum install openstack-cinder -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/cinder/cinder.conf database connection mysql+pymysql://cinder:CINDER_DBPASS@simplecontroller/cinder 
+#code#
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+Determine the OpenStack credentials on the Cinder configuration file:
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken www_authenticate_uri http://simplecontroller:5000
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://simplecontroller:5000
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_type password
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_name service
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinder
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password CINDER_PASS
+#code#
+
+To manage external resources and with multi-thead and/or multi-process is necessary manage the lock where will determine who is doing what:
+#code#
+openstack-config --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "cinder-manage db sync" cinder
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot cinder -e "show tables" 
+#code#
+
+Enable and start the Cinder API and Cinder Scheduler service:
+#code#
+systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
+systemctl start openstack-cinder-api.service openstack-cinder-scheduler.service
+#code#
+
+Check if the Cinder services are running, in this case should be only the scheduler:
+#code#
+openstack volume service list
+#code#
+
+
+#whichserver#
+simpleservices
+#whichserver#
+The propuse of the section is describe how to have some way to provide volumes on OpenStack, for this environment will be the NFS, but on this blog have or will have other ways to provide Block Storage.
+
+First of all, install the nfs-utils package that contain the nfs-server service:
+#code#
+yum install nfs-utils -y
+#code#
+
+create a new directory that will be used to share with other machines through NFS protocol: 
+#code#
+mkdir /mnt/vol01
+#code#
+
+Inside the NFS configuration file, write the config about the directory recently created:
+#code#
+echo '/mnt/vol01 *(rw,no_root_squash)' > /etc/exports
+#code#
+
+Enable and start the NFS Server service:
+#code#
+systemctl enable nfs-server
+systemctl start nfs-server
+#code#
+
+Check to see if it is all ok:
+#code#
+showmount -e
+#code#
+
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the same packge, but this time we'll (Cinder Volume'll) use the 'mount.nfs' command:
+#code#
+yum install nfs-utils -y
+#code#
+
+Determine that the backends enabled will be the 'nfsbkend':
+#code#
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends nfsbkend
+#code#
+
+Configure the Cinder Volume to work with the NFS protocol also determine the config file of our NFS Server:
+#code#
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_shares_config /etc/cinder/shares.conf
+openstack-config --set /etc/cinder/cinder.conf nfsbkend volume_driver cinder.volume.drivers.nfs.NfsDriver
+openstack-config --set /etc/cinder/cinder.conf nfsbkend volume_backend_name nfsbackendname
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_mount_options
+openstack-config --set /etc/cinder/cinder.conf nfsbkend nfs_sparsed_volumes True
+#code#
+
+Set where is our NFS server like bellow:
+#code#
+echo "simpleservices.xurupita.nl:/mnt/vol01" > /etc/cinder/shares.conf
+#code#
+
+
+Enable and start the Cinder Volume service:
+#code#
+systemctl enable openstack-cinder-volume
+systemctl restart openstack-cinder-api openstack-cinder-scheduler openstack-cinder-volume
+#code#
+
+Now is possible to see the mount of the NFS:
+#code#
+mount
+#code#
+
+still admin user, create the type and correlate with the NFS server config:
+#code#
+openstack volume type create NFS
+openstack volume type set NFS --property volume_backend_name=nfsbackendname
+openstack volume type list --long
+#code#
+
+Create a new volume:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ volume create --type NFS --size 2 vol01
+#code#
+
+Create a new other volume, but this time from a image:
+#code#
+openstack --os-auth-url http://simplecontroller:5000/v3 \
+ --os-project-domain-name mydomain --os-user-domain-name mydomain \
+ --os-project-name myproject --os-username myuser --os-password myuser_pass \
+ volume create --type NFS --image cirros --size 2 volimg01
+#code#
+
+List all volumes also their configs:
+#code#
+cinder list --all
+#code#
+
+To finalize verify these new files on mount point:
+#code#
+ls -R /var/lib/cinder/mnt/
+#code#
+
+
+
+#subtitle#
+Placement service (Placement)
+#subtitle#
+
+First of all, create the Placement database and set the password to enable the connection on this database with user placement:
+#code#
+mysql -u root -e "CREATE DATABASE placement"
+mysql -u root -e "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY 'PLACEMENT_DBPASS'; flush privileges"
+#code#
+
+
+Now create the Placement service as well add the your endpoints:
+#code#
+openstack service create --name placement --description "Placement API" placement
+openstack endpoint create --region EURegion placement public http://simplecontroller:8778
+openstack endpoint create --region EURegion placement internal http://simplecontroller:8778
+openstack endpoint create --region EURegion placement admin http://simplecontroller:8778
+#code#
+
+Create the Placement user also set the role admin on project service:
+#code#
+openstack user create --domain default --password PLACEMENT_PASS placement
+openstack role add --project service --user placement admin
+#code#
+
+Install the Placement packge:
+#code#
+yum install openstack-placement-api -y
+#code#
+
+Set the database configurations created few steps above:
+#code#
+openstack-config --set /etc/placement/placement.conf placement_database connection mysql+pymysql://placement:PLACEMENT_DBPASS@simplecontroller/placement
+#code#
+
+Determine the OpenStack credentials on the Placement configuration file:
+#code#
+openstack-config --set /etc/placement/placement.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/placement/placement.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/placement/placement.conf keystone_authtoken auth_type password
+openstack-config --set /etc/placement/placement.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/placement/placement.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/placement/placement.conf keystone_authtoken project_name service
+openstack-config --set /etc/placement/placement.conf keystone_authtoken username placement
+openstack-config --set /etc/placement/placement.conf keystone_authtoken password PLACEMENT_PASS
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "placement-manage db sync" placement
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot placement -e "show tables"
+#code#
+
+This is a little workaround:
+#code#
+cat <<'EOF'>> /etc/httpd/conf.d/00-placement-api.conf
+<Directory /usr/bin>
+    <IfVersion >= 2.4>
+        Require all granted
+    </IfVersion>
+    <IfVersion < 2.4>
+        Order allow,deny
+        Allow from all
+    </IfVersion>
+</Directory>
+EOF
+#code#
+
+Restart the Apache to make the changes affect:
+#code#
+systemctl restart httpd
+#code#
+
+Check if is possible to connect to Placement endpoints, this command now don't will have output
+#code#
+openstack resource provider list
+#code#
+
+#subtitle#
+Compute service (Nova)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+First of all, create the Nova databases (nova_api, nova and nova_cell0) and set the password to enable the connection on this database with user nova:
+#code#
+mysql -u root -e "CREATE DATABASE nova_api"
+mysql -u root -e "CREATE DATABASE nova"
+mysql -u root -e "CREATE DATABASE nova_cell0"
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova_api.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges" 
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges"
+mysql -u root -e "GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS'; flush privileges"
+#code#
+
+Now create the Nova service as well add the your endpoints:
+#code#
+openstack service create --name nova --description "OpenStack Compute" compute
+openstack endpoint create --region EURegion compute public http://simplecontroller:8774/v2.1
+openstack endpoint create --region EURegion compute internal http://simplecontroller:8774/v2.1
+openstack endpoint create --region EURegion compute admin http://simplecontroller:8774/v2.1
+#code#
+
+Create the Nova user also set the role admin on project service:
+#code#
+openstack user create --domain default --password NOVA_PASS nova
+openstack role add --project service --user nova admin
+#code#
+
+Install the Nova packges:
+#code#
+yum install openstack-nova-api openstack-nova-conductor openstack-nova-novncproxy openstack-nova-scheduler -y
+#code#
+
+Set the databases configurations created few steps above:
+#code#
+openstack-config --set /etc/nova/nova.conf api_database connection mysql+pymysql://nova:NOVA_DBPASS@simplecontroller/nova_api
+openstack-config --set /etc/nova/nova.conf database connection mysql+pymysql://nova:NOVA_DBPASS@simplecontroller/nova
+#code#
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+
+Determine the OpenStack credentials on the Nova configuration file:
+#code#
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_type password
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_name service
+openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
+openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
+#code#
+
+Set where is the Glance service that this nova will talk:
+#code#
+openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
+#code#
+
+Also determine which Cinder Region this nova will talk:
+#code#
+openstack-config --set /etc/nova/nova.conf cinder os_region_name EURegion
+#code#
+
+Determine the OpenStack credentials for the service Placement on the Nova configuration file:
+#code#
+openstack-config --set /etc/nova/nova.conf placement region_name EURegion
+openstack-config --set /etc/nova/nova.conf placement project_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement project_name service
+openstack-config --set /etc/nova/nova.conf placement auth_type password
+openstack-config --set /etc/nova/nova.conf placement user_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf placement username placement
+openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
+#code#
+
+This configuration is to add automatically new compute nodes to the cell:
+#code#
+openstack-config --set /etc/nova/nova.conf scheduler discover_hosts_in_cells_interval 300
+#code#
+
+Sync the database, it means create all tables also populate with the minimum iformation required:
+#code#
+su -s /bin/sh -c "nova-manage api_db sync" nova
+su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
+su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
+su -s /bin/sh -c "nova-manage db sync" nova
+#code#
+
+Confirm looking if the tables are created:
+#code#
+mysql -uroot nova_cell0 -e "show tables"
+mysql -uroot nova_api -e "show tables"
+mysql -uroot nova -e "show tables"
+#code#
+
+Check if the cell are correctly configured:
+#code#
+su -s /bin/sh -c "nova-manage cell_v2 list_cells" nova
+#code#
+
+Enable and start the Nova API, Nova Scheduler, Nova Conductor and Nova NoVNCProxy service:
+#code#
+systemctl enable openstack-nova-api.service openstack-nova-scheduler.service \
+ openstack-nova-conductor.service openstack-nova-novncproxy.service
+systemctl start openstack-nova-api.service openstack-nova-scheduler.service \
+ openstack-nova-conductor.service openstack-nova-novncproxy.service
+#code#
+
+List all services from Nova:
+#code#
+openstack compute service list
+#code#
+
+#whichserver#
+simplecompute
+#whichserver#
+
+
+Install the Nova packge:
+#code#
+yum install openstack-nova-compute -y   
+#code#
+
+
+Set the RabbitMQ credentions also which server we will work:
+#code#
+openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:RABBIT_PASS@simplecontroller 
+#code#
+
+Determine the OpenStack credentials on the Nova configuration file:
+#code#
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf keystone_authtoken memcached_servers simplecontroller:11211
+openstack-config --set /etc/nova/nova.conf keystone_authtoken auth_type password
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken user_domain_name Default
+openstack-config --set /etc/nova/nova.conf keystone_authtoken project_name service
+openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
+openstack-config --set /etc/nova/nova.conf keystone_authtoken password NOVA_PASS
+#code#
+
+
+Determine the OpenStack credentials for the service Placement on the Nova configuration file:
+#code#
+openstack-config --set /etc/nova/nova.conf placement region_name EURegion
+openstack-config --set /etc/nova/nova.conf placement project_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement project_name service
+openstack-config --set /etc/nova/nova.conf placement auth_type password
+openstack-config --set /etc/nova/nova.conf placement user_domain_name Default
+openstack-config --set /etc/nova/nova.conf placement auth_url http://simplecontroller:5000/v3
+openstack-config --set /etc/nova/nova.conf placement username placement
+openstack-config --set /etc/nova/nova.conf placement password PLACEMENT_PASS
+#code#
+
+Configure the VNC to enable the 'simplecontroller' be a proxy from external environmet to the internal machines:
+#code#
+openstack-config --set /etc/nova/nova.conf vnc enabled true
+openstack-config --set /etc/nova/nova.conf vnc server_listen 0.0.0.0
+openstack-config --set /etc/nova/nova.conf vnc server_proxyclient_address 192.168.88.11
+openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://192.168.88.7:6080/vnc_auto.html
+#code#
+
+Determine which Glance service will be used by this Nova Compute:
+#code#
+openstack-config --set /etc/nova/nova.conf glance api_servers http://simplecontroller:9292
+#code#
+
+This little script will look if the processor supoort virtualization:
+#code#
+if egrep -q '(vmx|svm)' /proc/cpuinfo
+  then 
+  openstack-config --set /etc/nova/nova.conf libvirt virt_type kvm
+else
+  openstack-config --set /etc/nova/nova.conf libvirt virt_type qemu
+fi
+#code#
+
+Enable and start the LibvirtD and Nova Computeservice:
+#code#
+systemctl enable libvirtd.service openstack-nova-compute.service
+systemctl start libvirtd.service openstack-nova-compute.service
+#code#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Now it is time to see all works very well:
+#code#
+openstack compute service list
+openstack hypervisor list
+openstack resource provider list
+#code#
+
+
+#subtitle#
+Dashboard (Horizon)
+#subtitle#
+
+#whichserver#
+simplecontroller
+#whichserver#
+
+Install the Horizon packge:
+#code#
+yum install openstack-dashboard -y
+#code#
+
+Determine which OpenStack this Horizon will conect:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_HOST '"simplecontroller"'
+#code#
+
+Set where from will be accept connections:
+#code#
+sed -e 's/ALLOWED_HOSTS.*/ALLOWED_HOSTS = ["*"]/' /etc/openstack-dashboard/local_settings -i
+#code#
+
+Set Horizon to store the Session and Cache on Memcached:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' SESSION_ENGINE "'django.contrib.sessions.backends.cache'"
+openstack-config --set /etc/openstack-dashboard/local_settings '' CACHES "{'default': {'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache','LOCATION': 'simplecontroller:11211',}}"
+#code#
+
+Enable the Horizon to work with multiple Domains:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT True
+#code#
+
+Chose the default Role to be used by Horizon:
+#code#
+openstack-config --set /etc/openstack-dashboard/local_settings '' OPENSTACK_KEYSTONE_DEFAULT_ROLE '"member"'
+#code#
+
+Restart the Apache to be affected by the changes:
+#code#
+systemctl restart httpd.service
+#code#
+
+Now finalize the instalation fowlling one of the next sections:
+#intlink#
+OpenStack/Base/OpenVSwitch_Base
+#intlink#
+
+#intlink#
+OpenStack/Base/Calico_Base
+#intlink#
+
+#intlink#
+OpenStack/Base/LinuxBridge_Base
+#intlink#
+
+
+
+

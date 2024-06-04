@@ -1,0 +1,71 @@
+#title#
+Ceph MGR
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+
+#intlink#
+Ceph/Ceph-Deploy_Install
+#intlink#
+
+#code#
+ceph mgr module enable restful
+#code#
+
+#code#
+ceph mgr module ls
+#code#
+
+#code#
+ceph mgr services
+#code#
+
+#code#
+ceph restful -h
+#code#
+
+#code#
+ceph restful create-self-signed-cert
+#code#
+
+#code#
+ceph restful create-key ceph-admin
+#code#
+
+#code#
+ceph mgr services
+#code#
+
+#code#
+curl -k -X GET -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 'https://cephnode03.xurupita.nl:8003/osd'
+#code#
+
+#code#
+curl -k -X GET -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 'https://cephnode03.xurupita.nl:8003/osd/1'
+#code#
+
+#code#
+curl -i -k -X PATCH -H "Content-Type: application/json" -d '{"in": false}' -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 'https://cephnode03.xurupita.nl:8003/osd/1'
+#code#
+
+#code#
+curl -k -X GET -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 'https://cephnode03.xurupita.nl:8003/osd/1'
+#code#
+
+#code#
+curl -i -k -X POST -H "Content-Type: application/json" -d '{"name": "pool_test", "pg_num":128}' -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 https://cephnode03.xurupita.nl:8003/pool
+#code#
+
+
+#code#
+curl -i -k -X GET -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 https://cephnode03.xurupita.nl:8003/pool
+#code#
+
+#code#
+#curl -i -k -X GET -H "Content-Type: application/json" -d '{"name": "pool_test"}' -u ceph-admin:22a33db2-42e9-4823-915b-22162b1701d9 https://cephnode03.xurupita.nl:8003/pool
+#code#
+
+
+

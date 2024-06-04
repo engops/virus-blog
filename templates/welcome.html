@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% for i in Getter_time() %}
+<a class="aindex" style="text-decoration: none; color: black;" href="{{ WEB_URL }}/{{ i['file'].replace('.site','.html') }}">
+<div class="index">
+<p class="pindextime">{{ i['date'] }}</p>
+<p class="pindextitle">{{ i['title'] }}</p>
+<p class="pindexurl">{{ i['file'].replace('.site','') }}</p>
+</div>
+</a>
+{% endfor %}
+
+{% endblock %}

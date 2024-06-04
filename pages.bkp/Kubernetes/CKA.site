@@ -1,0 +1,37 @@
+#title#
+CKA
+#title#
+##markdate##
+6/2/2020
+##markdate##
+
+
+#subtitle#
+Imperative Commands
+#subtitle#
+
+Create a pod
+#code#
+kubectl run --generator=run-pod/v1 nginx --image=nginx
+#code#
+
+Generate POD yaml file
+#code#
+kubectl run --generator=run-pod/v1 nginx --image=nginx --dry-run -o yaml > pod-definition.yml
+#code#
+
+Create Deployment
+#code#
+kubectl create deployment --image=nginx nginx
+#code#
+
+
+Create Deployment with replicas
+#code#
+kubectl create deployment --image=nginx nginx
+kubectl scale deployment/nginx --replicas=4
+#code#
+
+Either, you may want generate the deployment YAML file and than update the replica options
+
+

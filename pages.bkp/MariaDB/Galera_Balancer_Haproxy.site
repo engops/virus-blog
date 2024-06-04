@@ -1,0 +1,17 @@
+#title#
+Galera Balancer Haproxy
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+
+#code#
+mysql -uroot -p123456 -e "CREATE USER 'haproxy'@'192.168.122.44'"
+mysql -uroot -p123456 -e "CREATE USER 'haproxy'@'controllernode01.localdomain'"
+#code#
+
+image that you can put on site
+#image#
+MariaDB/marialogo.png
+#image#

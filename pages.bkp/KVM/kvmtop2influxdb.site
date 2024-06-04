@@ -1,0 +1,88 @@
+#title#
+kvmtop2influxdb
+#title#
+##markdate##
+5/2/2020
+##markdate##
+
+
+#code#
+cat << 'EOF' > /usr/local/bin/kvm2influx.py
+#!/usr/bin/python
+import datetime
+import influxdb
+import json
+import subprocess
+import time
+
+client = influxdb.InfluxDBClient(host='192.168.122.70', port=8086, username='logstashuser', password='logstashpass', ssl=False, verify_ssl=False)
+client.create_database('kvmtop3')
+
+class influx:
+  def __init__(self):
+    client.switch_database('kvmtop3')
+    res = json.loads(subprocess.check_output(["/usr/bin/kvmtop", "--printer=json", "--cpu", "--mem", "--net", "--host", "--verbose", "--runs=1"]))
+    influ = []
+    zero = {}
+    for k,v in res.items():
+      if k == 'host':
+        for k1,v1 in v.items():
+          if k1 == 'host_name':
+            zero['tags'] = { k1:v1 }
+            zero['measurement'] = 'host'
+#            zero['time'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        del v['host_name']
+        zero['fields'] = v
+      else:
+        for i in v:
+          influ = []
+          zero = {}
+          for k2,v2 in i.items():
+            if k2 == 'UUID':
+              zero['tags'] = { k2:v2 }
+              zero['measurement'] = 'instances'
+#              zero['time'] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+          del i['UUID']
+          zero['fields'] = i
+          influ.append(zero)
+          client.write_points(influ, time_precision='ms')
+          client.close()
+    influ.append(zero)
+    client.write_points(influ, time_precision='ms')
+    client.close()
+
+while True:
+  influx() 
+  time.sleep(10)
+EOF
+#code#
+
+
+
+
+
+
+#code#
+chmod +x /usr/local/bin/kvm2influx.py
+#code#
+
+
+
+
+
+
+#code#
+cat << 'EOF'> /lib/systemd/system/kvmtop2influx.service
+[Unit]
+Description=Example systemd service.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /usr/local/bin/kvm2influx.py
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+
+

@@ -1,0 +1,80 @@
+##markdate##
+17/2/2020
+##markdate##
+#title#
+PfSense Cloud-init
+#title#
+
+#whichserver#
+pfSense installation
+#whichserver#
+
+Install pfSense 2.4.3 or later with default settings on two partition (/boot and /). Be aware that there isn't any disk partition after the root partition, otherwise, the disk resize won't work.
+
+
+Configure a single interface as WAN interface.
+
+
+
+#whichserver#
+pfSense WebGUI customization
+#whichserver#
+
+#code#
+1. System / Advanced / Admin Access tab:
+* Check: Disable HTTP_REFERER enforcement check
+* Check: Enable Secure Shell
+* Check: Disable password login for Secure Shell (RSA/DSA key only)
+
+2. System / Advanced / Networking tab:
+* Check: Disable hardware checksum offload
+#code#
+
+#whichserver#
+pfSense Console
+#whichserver#
+
+#code#
+### Comment the stty lines:
+
+vi /etc/phpshellsessions/changepassword
+...
+// If the user does exist, prompt for password
+while (empty($password)) {
+        echo gettext("New Password") . ": ";
+        //exec('/bin/stty -echo');
+        $password = trim(fgets($fp));
+        //exec('/bin/stty echo');
+        echo "\n";
+}
+
+// Confirm password
+while (empty($confpassword)) {
+        echo gettext("Confirm New Password") . ": ";
+        //exec('/bin/stty -echo');
+        $confpassword = trim(fgets($fp));
+        //exec('/bin/stty echo');
+        echo "\n";
+}
+...
+#code#
+
+#whichserver#
+Install pfsense cloud-init
+#whichserver#
+
+#code#
+fetch https://raw.githubusercontent.com/rrbarreto/pfsense-cloudinit/master/installer.sh
+sh installer.sh
+poweroff
+#code#
+
+
+#whichserver#
+OpenStack image create
+#whichserver#
+
+#code#
+$ openstack image create pfSense --file pfsense.qcow2 --disk-format qcow2
+#code#
+
